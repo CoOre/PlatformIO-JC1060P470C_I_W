@@ -1,13 +1,13 @@
 #include <Arduino.h>
 #include "lvgl.h"
 #include "pins_config.h"
-#include "lcd/jd9165_lcd.h"
+#include "lcd/lgfx_jd9165.h"
 #include "touch/gt911_touch.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
-#include "esp_lcd_mipi_dsi.h"
+#include "esp_log.h"
 
-jd9165_lcd lcd(LCD_RST);
+LGFX_JD9165 lcd;
 gt911_touch touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
 
 lv_display_t *disp_drv;
@@ -29,8 +29,6 @@ static uint32_t last_status_ms = 0;
 static uint8_t demo_battery_level = 82;
 static int8_t demo_battery_delta = -1;
 static bool demo_wifi_connected = true;
-static bool async_flush_ready = false;
-static int64_t flush_start_us = 0;
 static volatile uint32_t last_flush_time_us = 0;
 static volatile uint32_t max_flush_time_us = 0;
 static volatile uint32_t flush_sample_count = 0;
@@ -61,39 +59,26 @@ static lv_coord_t map_touch(int16_t raw, int16_t min_raw, int16_t max_raw, lv_co
     return static_cast<lv_coord_t>(val);
 }
 
-static bool panel_color_trans_done_cb(esp_lcd_panel_handle_t /*panel*/, esp_lcd_dpi_panel_event_data_t * /*edata*/, void *user_ctx)
-{
-    lv_display_t *disp = static_cast<lv_display_t *>(user_ctx);
-    if (flush_start_us != 0) {
-        const int64_t duration = esp_timer_get_time() - flush_start_us;
-        last_flush_time_us = static_cast<uint32_t>(duration);
-        if (last_flush_time_us > max_flush_time_us) {
-            max_flush_time_us = last_flush_time_us;
-        }
-        flush_sample_count++;
-        flush_time_accum_us += static_cast<uint64_t>(duration);
-        flush_start_us = 0;
-    }
-    lv_display_flush_ready(disp);
-    return false;
-}
-
 static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *color_map)
 {
     const int offsetx1 = area->x1;
     const int offsetx2 = area->x2;
     const int offsety1 = area->y1;
     const int offsety2 = area->y2;
-    flush_start_us = esp_timer_get_time();
-    esp_err_t err = lcd.lcd_draw_bitmap(offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_map);
-    if (!async_flush_ready || err != ESP_OK) {
-        if (err != ESP_OK) {
-            Serial0.printf("lcd_draw_bitmap error %d\r\n", static_cast<int>(err));
-            Serial.printf("lcd_draw_bitmap error %d\r\n", static_cast<int>(err));
-        }
-        flush_start_us = 0;
-        lv_display_flush_ready(disp);
+    const int32_t w = offsetx2 - offsetx1 + 1;
+    const int32_t h = offsety2 - offsety1 + 1;
+    const int64_t start = esp_timer_get_time();
+    lcd.startWrite();
+    lcd.pushImage(offsetx1, offsety1, w, h, reinterpret_cast<const lgfx::rgb565_t *>(color_map));
+    lcd.endWrite();
+    const int64_t duration = esp_timer_get_time() - start;
+    last_flush_time_us = static_cast<uint32_t>(duration);
+    if (last_flush_time_us > max_flush_time_us) {
+        max_flush_time_us = last_flush_time_us;
     }
+    flush_sample_count++;
+    flush_time_accum_us += static_cast<uint64_t>(duration);
+    lv_display_flush_ready(disp);
 }
 
 static void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data)
@@ -272,7 +257,15 @@ void setup()
     Serial0.println("ESP32P4 MIPI DSI LVGL (UART0)");
     Serial.println("ESP32P4 MIPI DSI LVGL");
 
-    lcd.begin();
+    lcd.setColorDepth(16);
+    lcd.setSwapBytes(true); // RGB565 from LVGL usually needs byte swap on ESP
+    bool lcd_ok = lcd.init();
+    if (!lcd_ok) {
+        Serial0.println("LGFX init failed");
+        Serial.println("LGFX init failed");
+    }
+    pinMode(LCD_LED, OUTPUT);
+    digitalWrite(LCD_LED, HIGH);
     touch.begin(); // enable touch, but do not wire into LVGL yet
 
     lv_init();
@@ -287,14 +280,6 @@ void setup()
     assert(buf);
     assert(buf1);
     lv_display_set_buffers(disp_drv, buf, buf1, buf_bytes, LV_DISPLAY_RENDER_MODE_FULL);
-
-    esp_lcd_dpi_panel_event_callbacks_t panel_cbs = {
-        .on_color_trans_done = panel_color_trans_done_cb,
-        .on_refresh_done = nullptr,
-    };
-    if (lcd.register_event_callbacks(&panel_cbs, disp_drv) == ESP_OK) {
-        async_flush_ready = true;
-    }
 
     // Enable LVGL input device for touch
     touch_indev = lv_indev_create();
