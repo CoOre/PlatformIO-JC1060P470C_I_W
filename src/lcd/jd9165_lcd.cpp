@@ -88,6 +88,7 @@ void jd9165_lcd::begin()
 
     // 创建JD9165控制面板
     esp_lcd_dpi_panel_config_t dpi_config = JD9165_1024_600_PANEL_60HZ_DPI_CONFIG(MIPI_DPI_PX_FORMAT);
+    dpi_config.num_fbs = 2; // enable double frame buffer inside DPI driver to reduce blocking and tearing
 
     jd9165_vendor_config_t vendor_config = {
         .mipi_config = {
@@ -109,24 +110,27 @@ void jd9165_lcd::begin()
     example_bsp_set_lcd_backlight(EXAMPLE_LCD_BK_LIGHT_ON_LEVEL);
 }
 
-void jd9165_lcd::lcd_draw_bitmap(uint16_t x_start, uint16_t y_start, uint16_t x_end, uint16_t y_end, uint8_t *color_data)
+esp_err_t jd9165_lcd::lcd_draw_bitmap(uint16_t x_start, uint16_t y_start, uint16_t x_end, uint16_t y_end, uint8_t *color_data)
 {
-    esp_lcd_panel_draw_bitmap(panel_handle, x_start, y_start, x_end, y_end, color_data);
+    return esp_lcd_panel_draw_bitmap(panel_handle, x_start, y_start, x_end, y_end, color_data);
 }
 
-void jd9165_lcd::draw16bitbergbbitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *color_data)
+esp_err_t jd9165_lcd::draw16bitbergbbitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *color_data)
 {
     uint16_t x_start = x;
     uint16_t y_start = y;
     uint16_t x_end = w + x;
     uint16_t y_end = h + y;
 
-    esp_lcd_panel_draw_bitmap(panel_handle, x_start, y_start, x_end, y_end, color_data);
+    return esp_lcd_panel_draw_bitmap(panel_handle, x_start, y_start, x_end, y_end, color_data);
 }
 
 void jd9165_lcd::fillScreen(uint16_t color)
 {
     uint16_t *color_data = (uint16_t *)heap_caps_malloc(480 * 272 * 2, MALLOC_CAP_INTERNAL);
+    if (!color_data) {
+        return;
+    }
     memset(color_data, color, 480 * 272 * 2);
     draw16bitbergbbitmap(0, 0, 480, 272, color_data);
     free(color_data);
@@ -150,4 +154,12 @@ uint16_t jd9165_lcd::width()
 uint16_t jd9165_lcd::height()
 {
     return LCD_V_RES;
+}
+
+esp_err_t jd9165_lcd::register_event_callbacks(const esp_lcd_dpi_panel_event_callbacks_t *cbs, void *user_ctx)
+{
+    if (!panel_handle) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return esp_lcd_dpi_panel_register_event_callbacks(panel_handle, cbs, user_ctx);
 }

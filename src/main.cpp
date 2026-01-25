@@ -4,6 +4,8 @@
 #include "lcd/jd9165_lcd.h"
 #include "touch/gt911_touch.h"
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
+#include "esp_lcd_mipi_dsi.h"
 
 jd9165_lcd lcd(LCD_RST);
 gt911_touch touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
@@ -11,6 +13,8 @@ gt911_touch touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
 lv_display_t *disp_drv;
 static lv_color_t *buf;
 static lv_color_t *buf1;
+// Full-frame double buffer to minimize LVGL redraw overhead on large objects
+static constexpr uint32_t DRAW_BUF_LINES = LCD_V_RES;
 
 static lv_indev_t *touch_indev = nullptr;
 static bool lvgl_owns_touch_read = false;
@@ -25,6 +29,13 @@ static uint32_t last_status_ms = 0;
 static uint8_t demo_battery_level = 82;
 static int8_t demo_battery_delta = -1;
 static bool demo_wifi_connected = true;
+static bool async_flush_ready = false;
+static int64_t flush_start_us = 0;
+static volatile uint32_t last_flush_time_us = 0;
+static volatile uint32_t max_flush_time_us = 0;
+static volatile uint32_t flush_sample_count = 0;
+static volatile uint64_t flush_time_accum_us = 0;
+
 struct touch_calibration_t {
     int16_t x_min;
     int16_t x_max;
@@ -50,14 +61,39 @@ static lv_coord_t map_touch(int16_t raw, int16_t min_raw, int16_t max_raw, lv_co
     return static_cast<lv_coord_t>(val);
 }
 
+static bool panel_color_trans_done_cb(esp_lcd_panel_handle_t /*panel*/, esp_lcd_dpi_panel_event_data_t * /*edata*/, void *user_ctx)
+{
+    lv_display_t *disp = static_cast<lv_display_t *>(user_ctx);
+    if (flush_start_us != 0) {
+        const int64_t duration = esp_timer_get_time() - flush_start_us;
+        last_flush_time_us = static_cast<uint32_t>(duration);
+        if (last_flush_time_us > max_flush_time_us) {
+            max_flush_time_us = last_flush_time_us;
+        }
+        flush_sample_count++;
+        flush_time_accum_us += static_cast<uint64_t>(duration);
+        flush_start_us = 0;
+    }
+    lv_display_flush_ready(disp);
+    return false;
+}
+
 static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *color_map)
 {
     const int offsetx1 = area->x1;
     const int offsetx2 = area->x2;
     const int offsety1 = area->y1;
     const int offsety2 = area->y2;
-    lcd.lcd_draw_bitmap(offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_map);
-    lv_display_flush_ready(disp);
+    flush_start_us = esp_timer_get_time();
+    esp_err_t err = lcd.lcd_draw_bitmap(offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_map);
+    if (!async_flush_ready || err != ESP_OK) {
+        if (err != ESP_OK) {
+            Serial0.printf("lcd_draw_bitmap error %d\r\n", static_cast<int>(err));
+            Serial.printf("lcd_draw_bitmap error %d\r\n", static_cast<int>(err));
+        }
+        flush_start_us = 0;
+        lv_display_flush_ready(disp);
+    }
 }
 
 static void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data)
@@ -240,18 +276,25 @@ void setup()
     touch.begin(); // enable touch, but do not wire into LVGL yet
 
     lv_init();
-    uint32_t buffer_size = LCD_H_RES * LCD_V_RES;
-
-    // Allocate full-size double buffer (LV_COLOR_DEPTH=16 -> 2 bytes per pixel)
-    size_t buf_bytes = buffer_size * sizeof(lv_color_t);
-    buf = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_SPIRAM));
-    buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_SPIRAM));
-    assert(buf);
-    assert(buf1);
+    const uint32_t buffer_pixels = LCD_H_RES * DRAW_BUF_LINES;
+    const size_t buf_bytes = buffer_pixels * sizeof(lv_color_t);
 
     disp_drv = lv_display_create(LCD_H_RES, LCD_V_RES);
     lv_display_set_flush_cb(disp_drv, my_disp_flush);
-    lv_display_set_buffers(disp_drv, buf, buf1, buffer_size * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_FULL);
+    // Full-screen buffers live in PSRAM; DMA capable is required for the driver copy
+    buf = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+    buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+    assert(buf);
+    assert(buf1);
+    lv_display_set_buffers(disp_drv, buf, buf1, buf_bytes, LV_DISPLAY_RENDER_MODE_FULL);
+
+    esp_lcd_dpi_panel_event_callbacks_t panel_cbs = {
+        .on_color_trans_done = panel_color_trans_done_cb,
+        .on_refresh_done = nullptr,
+    };
+    if (lcd.register_event_callbacks(&panel_cbs, disp_drv) == ESP_OK) {
+        async_flush_ready = true;
+    }
 
     // Enable LVGL input device for touch
     touch_indev = lv_indev_create();
@@ -286,6 +329,19 @@ void loop()
         last_status_ms = now;
         animate_status_bar(now);
     }
+    static uint32_t last_flush_report_ms = 0;
+    if (now - last_flush_report_ms >= 2000 && flush_sample_count > 0) {
+        const uint32_t samples = flush_sample_count;
+        const uint64_t accum = flush_time_accum_us;
+        const uint32_t max_us = max_flush_time_us;
+        flush_sample_count = 0;
+        flush_time_accum_us = 0;
+        max_flush_time_us = 0;
+        last_flush_report_ms = now;
+        const uint32_t avg_us = samples ? static_cast<uint32_t>(accum / samples) : 0U;
+        Serial0.printf("flush: avg=%uus max=%uus samples=%u\r\n", static_cast<unsigned>(avg_us), static_cast<unsigned>(max_us), static_cast<unsigned>(samples));
+        Serial.printf("flush: avg=%uus max=%uus samples=%u\r\n", static_cast<unsigned>(avg_us), static_cast<unsigned>(max_us), static_cast<unsigned>(samples));
+    }
     lv_timer_handler();
-    delay(5);
+    delay(1);
 }
