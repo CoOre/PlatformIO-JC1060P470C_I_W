@@ -1,10 +1,15 @@
+#ifndef USE_LGFX_TOUCH
+#define USE_LGFX_TOUCH 0
+#endif
+
+#if !USE_LGFX_TOUCH
 #include <Arduino.h>
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_err.h"
 #include "esp_log.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "esp_lcd_touch_gt911.h"
 #include "esp_lcd_panel_io.h"
 #ifndef ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP
@@ -18,6 +23,7 @@ static const char *TAG = "example";
 
 esp_lcd_touch_handle_t tp;
 esp_lcd_panel_io_handle_t tp_io_handle;
+static i2c_master_bus_handle_t i2c_bus = nullptr;
 
 uint16_t touch_strength[1];
 uint8_t touch_cnt = 0;
@@ -33,33 +39,43 @@ gt911_touch::gt911_touch(int8_t sda_pin, int8_t scl_pin, int8_t rst_pin, int8_t 
 void gt911_touch::begin()
 {
     // EV board BSP uses I2C1 for the shared codec/touch bus
-    const i2c_port_t i2c_port = I2C_NUM_1;
-    i2c_config_t i2c_conf = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = (gpio_num_t)_sda,
-        .scl_io_num = (gpio_num_t)_scl,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-    };
-    i2c_conf.master.clk_speed = 400000; // 400kHz as in reference demo
-
-    ESP_ERROR_CHECK(i2c_param_config(i2c_port, &i2c_conf));
-    ESP_ERROR_CHECK(i2c_driver_install(i2c_port, i2c_conf.mode, 0, 0, 0));
+    if (!i2c_bus) {
+        i2c_master_bus_config_t i2c_conf = {};
+        i2c_conf.i2c_port = I2C_NUM_1;
+        i2c_conf.sda_io_num = (gpio_num_t)_sda;
+        i2c_conf.scl_io_num = (gpio_num_t)_scl;
+        i2c_conf.clk_source = I2C_CLK_SRC_DEFAULT;
+        i2c_conf.glitch_ignore_cnt = 7;
+        i2c_conf.intr_priority = 0;
+        i2c_conf.trans_queue_depth = 4;
+        i2c_conf.flags.enable_internal_pullup = 1;
+        ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_conf, &i2c_bus));
+    }
 
     // Probe both possible GT911 addresses before creating panel IO
-    uint8_t dummy = 0;
-    esp_err_t probe_5d = i2c_master_read_from_device(i2c_port, ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS, &dummy, 1, pdMS_TO_TICKS(20));
-    esp_err_t probe_14 = i2c_master_read_from_device(i2c_port, ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP, &dummy, 1, pdMS_TO_TICKS(20));
+    esp_err_t probe_5d = i2c_master_probe(i2c_bus, ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS, 20);
+    esp_err_t probe_14 = i2c_master_probe(i2c_bus, ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP, 20);
     ESP_LOGI(TAG, "GT911 probe 0x5D -> 0x%x, 0x14 -> 0x%x", probe_5d, probe_14);
 
     esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG();
+    if (probe_5d == ESP_OK) {
+        tp_io_config.dev_addr = ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS;
+    } else if (probe_14 == ESP_OK) {
+        tp_io_config.dev_addr = ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP;
+    } else {
+        ESP_LOGE(TAG, "GT911 not found on I2C (0x5D/0x14). Check wiring/pullups.");
+        Serial0.println("GT911 not found on I2C (0x5D/0x14).");
+        return;
+    }
+    tp_io_config.lcd_param_bits = 8;    // GT911 uses 8-bit data
+    tp_io_config.scl_speed_hz = 100000; // start conservative for stability
     ESP_LOGI(TAG, "Initialize touch IO (I2C)");
     Serial0.printf("GT911 probe 0x5D -> 0x%x, 0x14 -> 0x%x\r\n", probe_5d, probe_14);
-    esp_err_t err = esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)i2c_port, &tp_io_config, &tp_io_handle);
+    esp_err_t err = esp_lcd_new_panel_io_i2c(i2c_bus, &tp_io_config, &tp_io_handle);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Touch IO init at addr 0x%02X failed (err=0x%x), retry backup addr 0x%02X", tp_io_config.dev_addr, err, ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP);
         tp_io_config.dev_addr = ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP;
-        err = esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)i2c_port, &tp_io_config, &tp_io_handle);
+        err = esp_lcd_new_panel_io_i2c(i2c_bus, &tp_io_config, &tp_io_handle);
     }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create touch IO, err=0x%x", err);
@@ -155,3 +171,4 @@ switch(r){
     }
 
 }
+#endif

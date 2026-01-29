@@ -2,16 +2,25 @@
 #include "lvgl.h"
 #include "pins_config.h"
 #include "lcd/lgfx_jd9165.h"
-#include "touch/gt911_touch.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "esp_lcd_mipi_dsi.h"
+#if defined(__has_include)
+  #if __has_include(<esp_cache.h>)
+    #include <esp_cache.h>
+    #define HAS_ESP_CACHE 1
+  #else
+    #define HAS_ESP_CACHE 0
+  #endif
+#else
+  #define HAS_ESP_CACHE 0
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "driver/i2c_master.h"
 
 LGFX_JD9165 lcd;
-gt911_touch touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
 
 lv_display_t *disp_drv;
 static lv_color_t *buf;
@@ -41,6 +50,57 @@ static volatile uint32_t last_flush_time_us = 0;
 static volatile uint32_t max_flush_time_us = 0;
 static volatile uint32_t flush_sample_count = 0;
 static volatile uint64_t flush_time_accum_us = 0;
+
+#if HAS_ESP_CACHE && defined(ESP_CACHE_MSYNC_FLAG_DIR_C2M)
+static inline void cache_writeback_range(const void *ptr, size_t size)
+{
+    if (!ptr || size == 0) return;
+    const uintptr_t mask = ~static_cast<uintptr_t>(127);
+    const uintptr_t start = reinterpret_cast<uintptr_t>(ptr) & mask;
+    const uintptr_t end = (reinterpret_cast<uintptr_t>(ptr) + size + 127) & mask;
+    if (start >= end) return;
+    esp_cache_msync(reinterpret_cast<void *>(start), end - start,
+                    ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_TYPE_DATA);
+}
+#else
+static inline void cache_writeback_range(const void *, size_t) {}
+#endif
+
+#ifndef I2C_SCAN_ENABLE
+#define I2C_SCAN_ENABLE 0
+#endif
+
+static void scan_i2c_bus()
+{
+#if I2C_SCAN_ENABLE
+    Serial0.println("I2C scan:");
+    i2c_master_bus_handle_t bus = nullptr;
+    i2c_master_bus_config_t bus_config = {};
+    bus_config.i2c_port = TOUCH_I2C_PORT;
+    bus_config.sda_io_num = (gpio_num_t)TOUCH_I2C_SDA;
+    bus_config.scl_io_num = (gpio_num_t)TOUCH_I2C_SCL;
+    bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
+    bus_config.glitch_ignore_cnt = 7;
+    bus_config.flags.enable_internal_pullup = 1;
+    bus_config.intr_priority = 0;
+    if (i2c_new_master_bus(&bus_config, &bus) != ESP_OK || !bus) {
+        Serial0.println("I2C init failed");
+        return;
+    }
+    uint8_t found = 0;
+    for (uint8_t addr = 0x03; addr <= 0x77; ++addr) {
+        esp_err_t err = i2c_master_probe(bus, addr, 20);
+        if (err == ESP_OK) {
+            Serial0.printf("  - 0x%02X\r\n", addr);
+            ++found;
+        }
+    }
+    if (!found) {
+        Serial0.println("  (no devices found)");
+    }
+    i2c_del_master_bus(bus);
+#endif
+}
 
 struct touch_calibration_t {
     int16_t x_min;
@@ -80,8 +140,16 @@ static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *co
         lcd.pushImage(offsetx1, offsety1, w, h, reinterpret_cast<const lgfx::rgb565_t *>(color_map));
         lcd.endWrite();
     }
-    if (use_direct_render && vsync_wait_enabled && vsync_sem) {
-        (void)xSemaphoreTake(vsync_sem, pdMS_TO_TICKS(35));
+    if (use_direct_render) {
+        const uint32_t w = static_cast<uint32_t>(area->x2 - area->x1 + 1);
+        const uint32_t h = static_cast<uint32_t>(area->y2 - area->y1 + 1);
+        const size_t pixel_size = sizeof(lv_color_t);
+        const size_t stride_bytes = static_cast<size_t>(LCD_H_RES) * pixel_size;
+        const size_t bytes = (h == 0) ? 0u : (static_cast<size_t>(h - 1) * stride_bytes + w * pixel_size);
+        uint8_t *base = reinterpret_cast<uint8_t *>(color_map);
+        uint8_t *start = base + (static_cast<size_t>(area->y1) * stride_bytes)
+                               + (static_cast<size_t>(area->x1) * pixel_size);
+        cache_writeback_range(start, bytes);
     }
     lv_display_flush_ready(disp);
 }
@@ -105,18 +173,18 @@ static bool on_dpi_refresh_done(esp_lcd_panel_handle_t panel,
 
 static void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data)
 {
-    bool touched;
-    uint16_t touchX, touchY;
-
-    touched = touch.getTouch(&touchX, &touchY);
+    uint16_t touchX = 0;
+    uint16_t touchY = 0;
+    uint_fast8_t count = lcd.getTouch(&touchX, &touchY);
+    bool touched = count > 0;
     touch_active = touched;
 
     if (!touched) {
         data->state = LV_INDEV_STATE_REL;
     } else {
         data->state = LV_INDEV_STATE_PR;
-        data->point.x = map_touch(touchX, touch_cal.x_min, touch_cal.x_max, LCD_H_RES - 1);
-        data->point.y = map_touch(touchY, touch_cal.y_min, touch_cal.y_max, LCD_V_RES - 1);
+        data->point.x = touchX;
+        data->point.y = touchY;
     }
 }
 
@@ -318,7 +386,12 @@ void setup()
     Serial.println("ESP32P4 MIPI DSI LVGL");
 
     lcd.setColorDepth(16);
-    lcd.setSwapBytes(true); // RGB565 from LVGL usually needs byte swap on ESP
+    // Build-time override: -DJD9165_SWAP_BYTES=1 (try if colors look swapped)
+    #ifndef JD9165_SWAP_BYTES
+    #define JD9165_SWAP_BYTES 0
+    #endif
+    lcd.setSwapBytes(JD9165_SWAP_BYTES);
+    scan_i2c_bus();
     bool lcd_ok = lcd.init();
     if (!lcd_ok) {
         Serial0.println("LGFX init failed");
@@ -327,7 +400,6 @@ void setup()
     lcd.initDMA();
     pinMode(LCD_LED, OUTPUT);
     digitalWrite(LCD_LED, HIGH);
-    touch.begin(); // enable touch, but do not wire into LVGL yet
 
     lv_init();
     const uint32_t buffer_pixels = LCD_H_RES * DRAW_BUF_LINES;
@@ -409,6 +481,10 @@ void loop()
         last_flush_report_ms = now;
         const uint32_t avg_us = samples ? static_cast<uint32_t>(accum / samples) : 0U;
     }
+    if (vsync_wait_enabled && vsync_sem) {
+        (void)xSemaphoreTake(vsync_sem, 0); // drop stale vsync
+        (void)xSemaphoreTake(vsync_sem, pdMS_TO_TICKS(25));
+    }
     lv_timer_handler();
     if (auto_scroll_timer) {
         if (touch_active && !auto_scroll_paused) {
@@ -419,5 +495,7 @@ void loop()
             auto_scroll_paused = false;
         }
     }
-    delay(10); // small yield; adjust if WiFi/tasks need time
+    if (!vsync_wait_enabled) {
+        delay(10); // small yield; adjust if WiFi/tasks need time
+    }
 }

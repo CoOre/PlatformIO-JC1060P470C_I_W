@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <LovyanGFX.hpp>
 #include <lgfx/v1/platforms/esp32p4/Panel_DSI.hpp>
+#include <lgfx/v1/touch/Touch_GT911.hpp>
 #include <esp_err.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_mipi_dsi.h>
@@ -13,6 +14,35 @@ namespace lgfx
 {
 inline namespace v1
 {
+
+// Build-time overrides: set in platformio.ini as -DJD9165_RGB_ORDER=1, -DJD9165_DPI_FREQ_MHZ=48
+#ifndef JD9165_RGB_ORDER
+#define JD9165_RGB_ORDER 0
+#endif
+#ifndef JD9165_DPI_FREQ_MHZ
+#define JD9165_DPI_FREQ_MHZ 20
+#endif
+#ifndef USE_LGFX_TOUCH
+#define USE_LGFX_TOUCH 0
+#endif
+#ifndef TOUCH_I2C_PORT
+#define TOUCH_I2C_PORT 1
+#endif
+#ifndef TOUCH_I2C_SDA
+#define TOUCH_I2C_SDA TP_I2C_SDA
+#endif
+#ifndef TOUCH_I2C_SCL
+#define TOUCH_I2C_SCL TP_I2C_SCL
+#endif
+#ifndef TOUCH_I2C_FREQ
+#define TOUCH_I2C_FREQ 100000
+#endif
+#ifndef TOUCH_RST
+#define TOUCH_RST TP_RST
+#endif
+#ifndef TOUCH_INT
+#define TOUCH_INT TP_INT
+#endif
 
 // JD9165 panel definition matching the init sequence shared in LovyanGFX issue #803
 struct Panel_JD9165_Exact : public Panel_DSI
@@ -26,12 +56,12 @@ public:
         cfg.pin_rst = LCD_RST;
         cfg.readable = false;
         cfg.invert = false;
-        cfg.rgb_order = false;
+        cfg.rgb_order = JD9165_RGB_ORDER;
         cfg.offset_rotation = 0;
         config(cfg);
 
         auto detail = config_detail();
-        detail.dpi_freq_mhz = 42; // closer to 60Hz timing; verify panel stability
+        detail.dpi_freq_mhz = 50;
         detail.hsync_pulse_width = 40;
         detail.hsync_back_porch = 160;
         detail.hsync_front_porch = 160;
@@ -181,11 +211,15 @@ public:
 private:
     lgfx::Bus_DSI _bus;
     lgfx::Panel_JD9165_Exact _panel;
+#if USE_LGFX_TOUCH
+    lgfx::Touch_GT911 _touch;
+#endif
 };
 
 inline LGFX_JD9165::LGFX_JD9165()
 {
     auto cfg = _bus.config();
+    
     cfg.lane_mbps = 750; // align with proven Arduino_GFX working config
     cfg.lane_num = 2;
     cfg.bus_id = 0;
@@ -195,5 +229,26 @@ inline LGFX_JD9165::LGFX_JD9165()
     cfg.lcd_param_bits = 8;
     _bus.config(cfg);
     _panel.setBus(&_bus);
+#if USE_LGFX_TOUCH
+    {
+        auto tcfg = _touch.config();
+        tcfg.i2c_port = TOUCH_I2C_PORT;
+        tcfg.pin_sda = TOUCH_I2C_SDA;
+        tcfg.pin_scl = TOUCH_I2C_SCL;
+        tcfg.pin_rst = TOUCH_RST;
+        tcfg.pin_int = TOUCH_INT;
+        tcfg.freq = TOUCH_I2C_FREQ;
+        tcfg.x_min = 0;
+        tcfg.x_max = LCD_H_RES - 1;
+        tcfg.y_min = 0;
+        tcfg.y_max = LCD_V_RES - 1;
+#ifdef TOUCH_I2C_ADDR
+        tcfg.i2c_addr = TOUCH_I2C_ADDR;
+#endif
+        tcfg.bus_shared = true;
+        _touch.config(tcfg);
+        _panel.setTouch(&_touch);
+    }
+#endif
     setPanel(&_panel);
 }
