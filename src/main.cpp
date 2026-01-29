@@ -51,6 +51,22 @@ static volatile uint32_t max_flush_time_us = 0;
 static volatile uint32_t flush_sample_count = 0;
 static volatile uint64_t flush_time_accum_us = 0;
 
+#ifndef FORCE_LVGL_FULL_RENDER
+#define FORCE_LVGL_FULL_RENDER 0
+#endif
+#ifndef FORCE_LVGL_PARTIAL_RENDER
+#define FORCE_LVGL_PARTIAL_RENDER 0
+#endif
+#ifndef LVGL_FULL_SINGLE_BUF_SRAM
+#define LVGL_FULL_SINGLE_BUF_SRAM 0
+#endif
+#ifndef LVGL_FULL_SRAM_ONLY
+#define LVGL_FULL_SRAM_ONLY 0
+#endif
+#ifndef LVGL_DRAW_BUF_LINES
+#define LVGL_DRAW_BUF_LINES 40
+#endif
+
 #if HAS_ESP_CACHE && defined(ESP_CACHE_MSYNC_FLAG_DIR_C2M)
 static inline void cache_writeback_range(const void *ptr, size_t size)
 {
@@ -402,14 +418,15 @@ void setup()
     digitalWrite(LCD_LED, HIGH);
 
     lv_init();
-    const uint32_t buffer_pixels = LCD_H_RES * DRAW_BUF_LINES;
+    const uint32_t draw_buf_lines = FORCE_LVGL_FULL_RENDER ? LCD_V_RES : 60;
+    const uint32_t buffer_pixels = LCD_H_RES * draw_buf_lines;
     const size_t buf_bytes = buffer_pixels * sizeof(lv_color_t);
 
     disp_drv = lv_display_create(LCD_H_RES, LCD_V_RES);
     lv_display_set_flush_cb(disp_drv, my_disp_flush);
     void *fb0 = nullptr;
     void *fb1 = nullptr;
-    if (lcd.getFrameBuffers(&fb0, &fb1)) {
+    if (!FORCE_LVGL_FULL_RENDER && !FORCE_LVGL_PARTIAL_RENDER && lcd.getFrameBuffers(&fb0, &fb1)) {
         buf = static_cast<lv_color_t *>(fb0);
         buf1 = static_cast<lv_color_t *>(fb1);
         use_direct_render = true;
@@ -431,14 +448,58 @@ void setup()
             }
         }
     } else {
-        // Fallback: Full-screen buffers live in PSRAM; DMA capable is required for the driver copy
-        buf = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
-        buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
-        assert(buf);
-        assert(buf1);
-        lv_display_set_buffers(disp_drv, buf, buf1, buf_bytes, LV_DISPLAY_RENDER_MODE_FULL);
-        Serial0.println("LVGL direct FB not available; using FULL render.");
-        Serial.println("LVGL direct FB not available; using FULL render.");
+        // LVGL draw buffers: prefer SRAM (DMA) and align to 64 bytes for PPA.
+        const uint32_t sram_caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+        const bool require_sram = LVGL_FULL_SRAM_ONLY != 0;
+        if (LVGL_FULL_SINGLE_BUF_SRAM) {
+            buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, sram_caps));
+            if (!buf && !require_sram) {
+                buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+            }
+            buf1 = nullptr;
+        } else {
+            buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, sram_caps));
+            buf1 = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, sram_caps));
+            if ((!buf || !buf1) && !require_sram) {
+                if (buf) {
+                    heap_caps_free(buf);
+                    buf = nullptr;
+                }
+                if (buf1) {
+                    heap_caps_free(buf1);
+                    buf1 = nullptr;
+                }
+                buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+                buf1 = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+            }
+        }
+        if (!buf || (!LVGL_FULL_SINGLE_BUF_SRAM && !buf1)) {
+            Serial0.printf("LVGL draw buffer alloc failed (need %u bytes)\n", static_cast<unsigned>(buf_bytes));
+            Serial.printf("LVGL draw buffer alloc failed (need %u bytes)\n", static_cast<unsigned>(buf_bytes));
+            while (true) {
+                delay(1000);
+            }
+        }
+        const lv_display_render_mode_t render_mode =
+            FORCE_LVGL_FULL_RENDER ? LV_DISPLAY_RENDER_MODE_FULL : LV_DISPLAY_RENDER_MODE_PARTIAL;
+        lv_display_set_buffers(disp_drv, buf, buf1, buf_bytes, render_mode);
+        use_direct_render = false;
+        if (FORCE_LVGL_FULL_RENDER) {
+            Serial0.println("LVGL FULL render forced.");
+            Serial.println("LVGL FULL render forced.");
+        } else if (FORCE_LVGL_PARTIAL_RENDER) {
+            Serial0.printf("LVGL PARTIAL render forced (%u lines).\n", static_cast<unsigned>(draw_buf_lines));
+            Serial.printf("LVGL PARTIAL render forced (%u lines).\n", static_cast<unsigned>(draw_buf_lines));
+        } else {
+            Serial0.printf("LVGL direct FB not available; using PARTIAL render (%u lines).\n", static_cast<unsigned>(draw_buf_lines));
+            Serial.printf("LVGL direct FB not available; using PARTIAL render (%u lines).\n", static_cast<unsigned>(draw_buf_lines));
+        }
+        Serial0.printf("LVGL FULL buffers: buf=%p buf1=%p\n", buf, buf1);
+        Serial.printf("LVGL FULL buffers: buf=%p buf1=%p\n", buf, buf1);
+        if (LVGL_FULL_SINGLE_BUF_SRAM) {
+            Serial0.println("LVGL single buffer mode (SRAM if possible).");
+            Serial.println("LVGL single buffer mode (SRAM if possible).");
+        }
     }
 
     // Enable LVGL input device for touch
@@ -495,7 +556,7 @@ void loop()
             auto_scroll_paused = false;
         }
     }
+    delay(1); // small yield; adjust if WiFi/tasks need time
     if (!vsync_wait_enabled) {
-        delay(10); // small yield; adjust if WiFi/tasks need time
     }
 }
