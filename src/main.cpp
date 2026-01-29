@@ -6,6 +6,9 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "esp_lcd_mipi_dsi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 LGFX_JD9165 lcd;
 gt911_touch touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
@@ -15,6 +18,9 @@ static lv_color_t *buf;
 static lv_color_t *buf1;
 // Full-frame double buffer to minimize LVGL redraw overhead on large objects
 static constexpr uint32_t DRAW_BUF_LINES = LCD_V_RES;
+static bool use_direct_render = false;
+static SemaphoreHandle_t vsync_sem = nullptr;
+static bool vsync_wait_enabled = false;
 
 static lv_indev_t *touch_indev = nullptr;
 static bool lvgl_owns_touch_read = false;
@@ -23,8 +29,10 @@ static lv_obj_t *status_notch = nullptr;
 static lv_obj_t *time_label = nullptr;
 static lv_obj_t *wifi_label = nullptr;
 static lv_obj_t *battery_label = nullptr;
-static lv_obj_t *fps_list = nullptr; // scrollable container for FPS test
-static lv_obj_t *fps_label = nullptr;
+static lv_obj_t *fps_container = nullptr; // scrollable container for FPS test
+static lv_timer_t *auto_scroll_timer = nullptr;
+static bool auto_scroll_paused = false;
+static bool touch_active = false;
 static uint32_t last_status_ms = 0;
 static uint8_t demo_battery_level = 82;
 static int8_t demo_battery_delta = -1;
@@ -61,24 +69,38 @@ static lv_coord_t map_touch(int16_t raw, int16_t min_raw, int16_t max_raw, lv_co
 
 static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *color_map)
 {
-    const int offsetx1 = area->x1;
-    const int offsetx2 = area->x2;
-    const int offsety1 = area->y1;
-    const int offsety2 = area->y2;
-    const int32_t w = offsetx2 - offsetx1 + 1;
-    const int32_t h = offsety2 - offsety1 + 1;
-    const int64_t start = esp_timer_get_time();
-    lcd.startWrite();
-    lcd.pushImage(offsetx1, offsety1, w, h, reinterpret_cast<const lgfx::rgb565_t *>(color_map));
-    lcd.endWrite();
-    const int64_t duration = esp_timer_get_time() - start;
-    last_flush_time_us = static_cast<uint32_t>(duration);
-    if (last_flush_time_us > max_flush_time_us) {
-        max_flush_time_us = last_flush_time_us;
+    if (!use_direct_render) {
+        const int offsetx1 = area->x1;
+        const int offsetx2 = area->x2;
+        const int offsety1 = area->y1;
+        const int offsety2 = area->y2;
+        const int32_t w = offsetx2 - offsetx1 + 1;
+        const int32_t h = offsety2 - offsety1 + 1;
+        lcd.startWrite();
+        lcd.pushImage(offsetx1, offsety1, w, h, reinterpret_cast<const lgfx::rgb565_t *>(color_map));
+        lcd.endWrite();
     }
-    flush_sample_count++;
-    flush_time_accum_us += static_cast<uint64_t>(duration);
+    if (use_direct_render && vsync_wait_enabled && vsync_sem) {
+        (void)xSemaphoreTake(vsync_sem, pdMS_TO_TICKS(35));
+    }
     lv_display_flush_ready(disp);
+}
+
+static bool on_dpi_refresh_done(esp_lcd_panel_handle_t panel,
+                                esp_lcd_dpi_panel_event_data_t *edata,
+                                void *user_ctx)
+{
+    LV_UNUSED(panel);
+    LV_UNUSED(edata);
+    lv_display_t *disp = static_cast<lv_display_t *>(user_ctx);
+    if (disp) {
+        lv_display_send_vsync_event(disp, nullptr);
+    }
+    BaseType_t high_task_woken = pdFALSE;
+    if (vsync_sem) {
+        xSemaphoreGiveFromISR(vsync_sem, &high_task_woken);
+    }
+    return false;
 }
 
 static void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data)
@@ -87,6 +109,7 @@ static void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data)
     uint16_t touchX, touchY;
 
     touched = touch.getTouch(&touchX, &touchY);
+    touch_active = touched;
 
     if (!touched) {
         data->state = LV_INDEV_STATE_REL;
@@ -201,36 +224,73 @@ static void create_status_notch()
 
 static void create_fps_test_list()
 {
-    // Place a long text list in the main area to stress scrolling/fps with minimal objects.
-    fps_list = lv_obj_create(main_page);
-    lv_obj_set_width(fps_list, LV_PCT(100));
-    lv_obj_set_flex_grow(fps_list, 1); // take remaining height in column layout
-    lv_obj_set_scroll_dir(fps_list, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(fps_list, LV_SCROLLBAR_MODE_AUTO);
-    lv_obj_set_style_pad_all(fps_list, 8, LV_PART_MAIN);
-    lv_obj_set_style_pad_gap(fps_list, 6, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(fps_list, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(fps_list, 0, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(fps_list, 0, LV_PART_MAIN);
+    fps_container = lv_obj_create(main_page);
+    lv_obj_set_width(fps_container, LV_PCT(100));
+    lv_obj_set_flex_grow(fps_container, 1);
+    lv_obj_set_scroll_dir(fps_container, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(fps_container, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_style_pad_all(fps_container, 8, LV_PART_MAIN);
+    lv_obj_set_style_border_width(fps_container, 0, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(fps_container, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(fps_container, LV_OPA_TRANSP, LV_PART_MAIN);
 
-    fps_label = lv_label_create(fps_list);
-    lv_obj_set_width(fps_label, LV_PCT(100));
-    lv_obj_set_style_pad_all(fps_label, 5, LV_PART_MAIN);
-    lv_obj_set_style_text_color(fps_label, lv_color_hex(0x111111), LV_PART_MAIN);
-    lv_obj_set_style_text_font(fps_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_style_text_line_space(fps_label, 6, LV_PART_MAIN);
-    lv_label_set_long_mode(fps_label, LV_LABEL_LONG_WRAP);
+    // Static scene: 1000px tall content with scattered squares.
+    lv_obj_t *content = lv_obj_create(fps_container);
+    lv_obj_set_size(content, LV_PCT(100), 1000);
+    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(content, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(content, 0, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(content, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, LV_PART_MAIN);
 
-    static char list_text[8192];
-    size_t offset = 0;
-    const int item_count = 1000;
-    for (int i = 1; i <= item_count; ++i) {
-        int written = lv_snprintf(list_text + offset, sizeof(list_text) - offset, "Line %03d - fps test", i);
-        if (written <= 0) break;
-        offset += static_cast<size_t>(written);
-        if (offset >= sizeof(list_text) - 1) break;
+    const lv_coord_t max_w = LCD_H_RES - 16; // account for padding
+    const lv_coord_t max_h = 1000;
+    const uint32_t count = 80;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        const lv_coord_t w = 40 + (i * 13u % 120);
+        const lv_coord_t h = 30 + (i * 17u % 100);
+        const lv_coord_t x = (i * 37u) % ((max_w > w) ? (max_w - w) : 1);
+        const lv_coord_t y = (i * 53u) % ((max_h > h) ? (max_h - h) : 1);
+
+        lv_obj_t *box = lv_obj_create(content);
+        lv_obj_set_size(box, w, h);
+        lv_obj_set_pos(box, x, y);
+        lv_obj_set_style_radius(box, 6, LV_PART_MAIN);
+        lv_obj_set_style_border_width(box, 0, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(box, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(box, 0, LV_PART_MAIN);
+
+        const uint32_t color = ((i * 97u) % 255) << 16 | ((i * 57u) % 255) << 8 | ((i * 23u) % 255);
+        lv_obj_set_style_bg_color(box, lv_color_hex(color), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(box, LV_OPA_COVER, LV_PART_MAIN);
+
+        lv_obj_t *label = lv_label_create(box);
+        lv_label_set_text_fmt(label, "#%02u", static_cast<unsigned>(i));
+        lv_obj_center(label);
+        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_14, LV_PART_MAIN);
     }
-    lv_label_set_text(fps_label, list_text);
+
+    // Auto-scroll timer (paused while touching the screen).
+    auto_scroll_timer = lv_timer_create(
+        [](lv_timer_t *t) {
+            // LV_UNUSED(t);
+            // if (!fps_container) return;
+            // static bool direction_down = true;
+            // const int32_t step = 2;
+            // const int32_t can_scroll_down = lv_obj_get_scroll_bottom(fps_container);
+            // const int32_t can_scroll_up = lv_obj_get_scroll_top(fps_container);
+            // if (direction_down && can_scroll_down <= 0) {
+            //     direction_down = false;
+            // } else if (!direction_down && can_scroll_up <= 0) {
+            //     direction_down = true;
+            // }
+            // const int32_t dy = direction_down ? -step : step; // negative dy scrolls down
+            // lv_obj_scroll_by_bounded(fps_container, 0, dy, LV_ANIM_OFF);
+        },
+        16,
+        nullptr);
 }
 
 static void animate_status_bar(uint32_t now_ms)
@@ -264,6 +324,7 @@ void setup()
         Serial0.println("LGFX init failed");
         Serial.println("LGFX init failed");
     }
+    lcd.initDMA();
     pinMode(LCD_LED, OUTPUT);
     digitalWrite(LCD_LED, HIGH);
     touch.begin(); // enable touch, but do not wire into LVGL yet
@@ -274,12 +335,39 @@ void setup()
 
     disp_drv = lv_display_create(LCD_H_RES, LCD_V_RES);
     lv_display_set_flush_cb(disp_drv, my_disp_flush);
-    // Full-screen buffers live in PSRAM; DMA capable is required for the driver copy
-    buf = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
-    buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
-    assert(buf);
-    assert(buf1);
-    lv_display_set_buffers(disp_drv, buf, buf1, buf_bytes, LV_DISPLAY_RENDER_MODE_FULL);
+    void *fb0 = nullptr;
+    void *fb1 = nullptr;
+    if (lcd.getFrameBuffers(&fb0, &fb1)) {
+        buf = static_cast<lv_color_t *>(fb0);
+        buf1 = static_cast<lv_color_t *>(fb1);
+        use_direct_render = true;
+        const size_t full_buf_bytes = static_cast<size_t>(LCD_H_RES) * LCD_V_RES * sizeof(lv_color_t);
+        lv_display_set_buffers(disp_drv, buf, buf1, full_buf_bytes, LV_DISPLAY_RENDER_MODE_DIRECT);
+        Serial0.printf("LVGL direct FB enabled: fb0=%p fb1=%p\n", buf, buf1);
+        Serial.printf("LVGL direct FB enabled: fb0=%p fb1=%p\n", buf, buf1);
+        esp_lcd_dpi_panel_event_callbacks_t cbs = {};
+        cbs.on_refresh_done = on_dpi_refresh_done;
+        if (!lcd.registerDpiCallbacks(&cbs, disp_drv)) {
+            Serial0.println("VSYNC event registration failed.");
+            Serial.println("VSYNC event registration failed.");
+        } else {
+            vsync_sem = xSemaphoreCreateBinary();
+            if (vsync_sem) {
+                vsync_wait_enabled = true;
+                Serial0.println("VSYNC wait enabled (semaphore).");
+                Serial.println("VSYNC wait enabled (semaphore).");
+            }
+        }
+    } else {
+        // Fallback: Full-screen buffers live in PSRAM; DMA capable is required for the driver copy
+        buf = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+        buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+        assert(buf);
+        assert(buf1);
+        lv_display_set_buffers(disp_drv, buf, buf1, buf_bytes, LV_DISPLAY_RENDER_MODE_FULL);
+        Serial0.println("LVGL direct FB not available; using FULL render.");
+        Serial.println("LVGL direct FB not available; using FULL render.");
+    }
 
     // Enable LVGL input device for touch
     touch_indev = lv_indev_create();
@@ -303,10 +391,6 @@ void loop()
     uint32_t elapsed = (last_ms == 0) ? 0 : (now - last_ms);
     last_ms = now;
     uint16_t x, y;
-    if (!lvgl_owns_touch_read && touch.getTouch(&x, &y)) {
-        Serial0.printf("TOUCH: x=%u y=%u\r\n", x, y);
-        Serial.printf("TOUCH: x=%u y=%u\r\n", x, y);
-    }
     if (elapsed > 0) {
         lv_tick_inc(elapsed); // advance LVGL tick for timers/indev
     }
@@ -324,9 +408,16 @@ void loop()
         max_flush_time_us = 0;
         last_flush_report_ms = now;
         const uint32_t avg_us = samples ? static_cast<uint32_t>(accum / samples) : 0U;
-        Serial0.printf("flush: avg=%uus max=%uus samples=%u\r\n", static_cast<unsigned>(avg_us), static_cast<unsigned>(max_us), static_cast<unsigned>(samples));
-        Serial.printf("flush: avg=%uus max=%uus samples=%u\r\n", static_cast<unsigned>(avg_us), static_cast<unsigned>(max_us), static_cast<unsigned>(samples));
     }
     lv_timer_handler();
-    delay(1);
+    if (auto_scroll_timer) {
+        if (touch_active && !auto_scroll_paused) {
+            lv_timer_pause(auto_scroll_timer);
+            auto_scroll_paused = true;
+        } else if (!touch_active && auto_scroll_paused) {
+            lv_timer_resume(auto_scroll_timer);
+            auto_scroll_paused = false;
+        }
+    }
+    delay(10); // small yield; adjust if WiFi/tasks need time
 }

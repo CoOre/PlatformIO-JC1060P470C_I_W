@@ -4,6 +4,9 @@
 #include <Arduino.h>
 #include <LovyanGFX.hpp>
 #include <lgfx/v1/platforms/esp32p4/Panel_DSI.hpp>
+#include <esp_err.h>
+#include <esp_lcd_panel_ops.h>
+#include <esp_lcd_mipi_dsi.h>
 #include "pins_config.h"
 
 namespace lgfx
@@ -28,7 +31,7 @@ public:
         config(cfg);
 
         auto detail = config_detail();
-        detail.dpi_freq_mhz = 56; // bump to spec clock to improve sync
+        detail.dpi_freq_mhz = 42; // closer to 60Hz timing; verify panel stability
         detail.hsync_pulse_width = 40;
         detail.hsync_back_porch = 160;
         detail.hsync_front_porch = 160;
@@ -92,6 +95,9 @@ public:
             2, 0x13, 0x0C,
             2, 0x30, 0x00,
             2, 0x3A, 0x55, // RGB565 pixel format
+            // TE enable (tearing effect sync) like Arduino_GFX working example
+            2, 0x34, 0x01,
+            2, 0x35, 0x00,
             0 // end of list
         };
 
@@ -132,6 +138,28 @@ public:
         return Panel_DSI::init(use_reset);
     }
 
+    void *getFrameBufferPtr() const { return _config_detail.buffer; }
+    bool registerDpiCallbacks(const esp_lcd_dpi_panel_event_callbacks_t *cbs, void *user_ctx) const
+    {
+        if (!_disp_panel_handle || !cbs) return false;
+        return esp_lcd_dpi_panel_register_event_callbacks(_disp_panel_handle, cbs, user_ctx) == ESP_OK;
+    }
+
+    bool getFrameBuffers(void **out_fb0, void **out_fb1) const
+    {
+        if (!out_fb0 || !out_fb1 || !_disp_panel_handle) return false;
+        void *fb0 = nullptr;
+        void *fb1 = nullptr;
+        esp_err_t err = esp_lcd_dpi_panel_get_frame_buffer(_disp_panel_handle, 2, &fb0, &fb1);
+        if (err == ESP_ERR_INVALID_ARG) {
+            err = esp_lcd_dpi_panel_get_frame_buffer(_disp_panel_handle, 1, &fb0);
+        }
+        if (err != ESP_OK || !fb0) return false;
+        *out_fb0 = fb0;
+        *out_fb1 = fb1;
+        return true;
+    }
+
 private:
     int8_t _backlight_pin = -1;
 };
@@ -143,6 +171,12 @@ class LGFX_JD9165 : public lgfx::LGFX_Device
 {
 public:
     LGFX_JD9165();
+    void *getFrameBufferPtr() const { return _panel.getFrameBufferPtr(); }
+    bool registerDpiCallbacks(const esp_lcd_dpi_panel_event_callbacks_t *cbs, void *user_ctx) const
+    {
+        return _panel.registerDpiCallbacks(cbs, user_ctx);
+    }
+    bool getFrameBuffers(void **out_fb0, void **out_fb1) const { return _panel.getFrameBuffers(out_fb0, out_fb1); }
 
 private:
     lgfx::Bus_DSI _bus;
@@ -152,7 +186,7 @@ private:
 inline LGFX_JD9165::LGFX_JD9165()
 {
     auto cfg = _bus.config();
-    cfg.lane_mbps = 650; // mid between 550 spec and 750 Arduino_GFX
+    cfg.lane_mbps = 750; // align with proven Arduino_GFX working config
     cfg.lane_num = 2;
     cfg.bus_id = 0;
     cfg.ldo_voltage_mv = 2500;
