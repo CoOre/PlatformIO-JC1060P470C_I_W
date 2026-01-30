@@ -112,7 +112,7 @@
 #define LV_DRAW_BUF_STRIDE_ALIGN                1
 
 /*Align the start address of draw_buf addresses to this bytes*/
-#define LV_DRAW_BUF_ALIGN                       64
+#define LV_DRAW_BUF_ALIGN                       4
 
 /*Using matrix for transformations.
  *Requirements:
@@ -192,9 +192,13 @@
 #endif
 
 /* Draw using Espressif's PPA accelerator */
-#define LV_USE_PPA 1
+#ifndef LV_USE_PPA
+#define LV_USE_PPA 0
+#endif
 #if LV_USE_PPA
-    #define LV_USE_PPA_IMG 1
+    #ifndef LV_USE_PPA_IMG
+    #define LV_USE_PPA_IMG 0
+    #endif
 #endif
 
 /* Use NXP's VG-Lite GPU on iMX RTxxx platforms. */
@@ -449,11 +453,11 @@
 #define LV_ATTRIBUTE_FLUSH_READY
 
 /*Required alignment size for buffers*/
-#define LV_ATTRIBUTE_MEM_ALIGN_SIZE 64
+#define LV_ATTRIBUTE_MEM_ALIGN_SIZE 1
 
 /*Will be added where memories needs to be aligned (with -Os data might not be aligned to boundary by default).
  * E.g. __attribute__((aligned(4)))*/
-#define LV_ATTRIBUTE_MEM_ALIGN __attribute__((aligned(64)))
+#define LV_ATTRIBUTE_MEM_ALIGN
 
 /*Attribute to mark large constant arrays for example font's bitmaps*/
 #define LV_ATTRIBUTE_LARGE_CONST

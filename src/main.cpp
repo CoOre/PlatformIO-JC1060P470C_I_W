@@ -20,6 +20,8 @@
 #include "freertos/semphr.h"
 #include "driver/i2c_master.h"
 
+static_assert(LV_COLOR_DEPTH == 16, "LV_COLOR_DEPTH must be 16 for RGB565 panel");
+
 LGFX_JD9165 lcd;
 
 lv_display_t *disp_drv;
@@ -62,6 +64,9 @@ static volatile uint64_t flush_time_accum_us = 0;
 #endif
 #ifndef LVGL_FULL_SRAM_ONLY
 #define LVGL_FULL_SRAM_ONLY 0
+#endif
+#ifndef LVGL_FULL_PSRAM_ONLY
+#define LVGL_FULL_PSRAM_ONLY 0
 #endif
 #ifndef LVGL_DRAW_BUF_LINES
 #define LVGL_DRAW_BUF_LINES 40
@@ -152,6 +157,9 @@ static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *co
         const int offsety2 = area->y2;
         const int32_t w = offsetx2 - offsetx1 + 1;
         const int32_t h = offsety2 - offsety1 + 1;
+        const size_t pixel_size = lv_color_format_get_size(lv_display_get_color_format(disp));
+        const size_t bytes = (w <= 0 || h <= 0) ? 0u : static_cast<size_t>(w) * static_cast<size_t>(h) * pixel_size;
+        cache_writeback_range(color_map, bytes);
         lcd.startWrite();
         lcd.pushImage(offsetx1, offsety1, w, h, reinterpret_cast<const lgfx::rgb565_t *>(color_map));
         lcd.endWrite();
@@ -159,7 +167,7 @@ static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *co
     if (use_direct_render) {
         const uint32_t w = static_cast<uint32_t>(area->x2 - area->x1 + 1);
         const uint32_t h = static_cast<uint32_t>(area->y2 - area->y1 + 1);
-        const size_t pixel_size = sizeof(lv_color_t);
+        const size_t pixel_size = lv_color_format_get_size(lv_display_get_color_format(disp));
         const size_t stride_bytes = static_cast<size_t>(LCD_H_RES) * pixel_size;
         const size_t bytes = (h == 0) ? 0u : (static_cast<size_t>(h - 1) * stride_bytes + w * pixel_size);
         uint8_t *base = reinterpret_cast<uint8_t *>(color_map);
@@ -418,19 +426,26 @@ void setup()
     digitalWrite(LCD_LED, HIGH);
 
     lv_init();
-    const uint32_t draw_buf_lines = FORCE_LVGL_FULL_RENDER ? LCD_V_RES : 60;
-    const uint32_t buffer_pixels = LCD_H_RES * draw_buf_lines;
-    const size_t buf_bytes = buffer_pixels * sizeof(lv_color_t);
 
     disp_drv = lv_display_create(LCD_H_RES, LCD_V_RES);
+    lv_display_set_color_format(disp_drv, LV_COLOR_FORMAT_RGB565);
     lv_display_set_flush_cb(disp_drv, my_disp_flush);
+
+    const uint32_t draw_buf_lines = FORCE_LVGL_FULL_RENDER ? LCD_V_RES : LVGL_DRAW_BUF_LINES;
+    const uint32_t buffer_pixels = LCD_H_RES * draw_buf_lines;
+    const size_t pixel_size = lv_color_format_get_size(lv_display_get_color_format(disp_drv));
+    const size_t buf_bytes = buffer_pixels * pixel_size;
+    Serial0.printf("LVGL color depth: %d, pixel size=%u bytes\n",
+                   LV_COLOR_DEPTH, static_cast<unsigned>(pixel_size));
+    Serial.printf("LVGL color depth: %d, pixel size=%u bytes\n",
+                  LV_COLOR_DEPTH, static_cast<unsigned>(pixel_size));
     void *fb0 = nullptr;
     void *fb1 = nullptr;
     if (!FORCE_LVGL_FULL_RENDER && !FORCE_LVGL_PARTIAL_RENDER && lcd.getFrameBuffers(&fb0, &fb1)) {
         buf = static_cast<lv_color_t *>(fb0);
         buf1 = static_cast<lv_color_t *>(fb1);
         use_direct_render = true;
-        const size_t full_buf_bytes = static_cast<size_t>(LCD_H_RES) * LCD_V_RES * sizeof(lv_color_t);
+        const size_t full_buf_bytes = static_cast<size_t>(LCD_H_RES) * LCD_V_RES * pixel_size;
         lv_display_set_buffers(disp_drv, buf, buf1, full_buf_bytes, LV_DISPLAY_RENDER_MODE_DIRECT);
         Serial0.printf("LVGL direct FB enabled: fb0=%p fb1=%p\n", buf, buf1);
         Serial.printf("LVGL direct FB enabled: fb0=%p fb1=%p\n", buf, buf1);
@@ -450,17 +465,24 @@ void setup()
     } else {
         // LVGL draw buffers: prefer SRAM (DMA) and align to 64 bytes for PPA.
         const uint32_t sram_caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+        const uint32_t psram_caps = MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM;
         const bool require_sram = LVGL_FULL_SRAM_ONLY != 0;
+        const bool require_psram = LVGL_FULL_PSRAM_ONLY != 0;
+        const bool prefer_psram = require_psram || (FORCE_LVGL_FULL_RENDER && LVGL_FULL_PSRAM_ONLY);
         if (LVGL_FULL_SINGLE_BUF_SRAM) {
-            buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, sram_caps));
-            if (!buf && !require_sram) {
-                buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+            const uint32_t primary_caps = prefer_psram ? psram_caps : sram_caps;
+            const uint32_t fallback_caps = prefer_psram ? sram_caps : psram_caps;
+            buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, primary_caps));
+            if (!buf && !require_sram && !require_psram) {
+                buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, fallback_caps));
             }
             buf1 = nullptr;
         } else {
-            buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, sram_caps));
-            buf1 = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, sram_caps));
-            if ((!buf || !buf1) && !require_sram) {
+            const uint32_t primary_caps = prefer_psram ? psram_caps : sram_caps;
+            const uint32_t fallback_caps = prefer_psram ? sram_caps : psram_caps;
+            buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, primary_caps));
+            buf1 = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, primary_caps));
+            if ((!buf || !buf1) && !require_sram && !require_psram) {
                 if (buf) {
                     heap_caps_free(buf);
                     buf = nullptr;
@@ -469,8 +491,8 @@ void setup()
                     heap_caps_free(buf1);
                     buf1 = nullptr;
                 }
-                buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
-                buf1 = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+                buf = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, fallback_caps));
+                buf1 = static_cast<lv_color_t *>(heap_caps_aligned_alloc(64, buf_bytes, fallback_caps));
             }
         }
         if (!buf || (!LVGL_FULL_SINGLE_BUF_SRAM && !buf1)) {
