@@ -72,7 +72,7 @@
  *====================*/
 
 /*Default display refresh, input device read and animation step period.*/
-#define LV_DEF_REFR_PERIOD  16      /*[ms]*/
+#define LV_DEF_REFR_PERIOD  8      /*[ms] ~120 FPS max*/
 
 /*Default Dot Per Inch. Used to initialize default sizes such as widgets sized, style paddings.
  *(Not so important, you can adjust it to modify default sizes and spaces)*/
@@ -126,7 +126,7 @@
  * and can't be drawn in chunks. */
 
 /*The target buffer size for simple layer chunks.*/
-#define LV_DRAW_LAYER_SIMPLE_BUF_SIZE    (24 * 1024)   /*[bytes]*/
+#define LV_DRAW_LAYER_SIMPLE_BUF_SIZE    (64 * 1024)   /*[bytes]*/
 
 /* The stack size of the drawing thread.
  * NOTE: If FreeType or ThorVG is enabled, it is recommended to set it to 32KB or more.
@@ -143,15 +143,15 @@
 	 * - bitmaps with transparency may use ARGB8888
 	 */
 
-	#define LV_DRAW_SW_SUPPORT_RGB565		1
-	#define LV_DRAW_SW_SUPPORT_RGB565A8		1
-	#define LV_DRAW_SW_SUPPORT_RGB888		1
-	#define LV_DRAW_SW_SUPPORT_XRGB8888		1
-	#define LV_DRAW_SW_SUPPORT_ARGB8888		1
-	#define LV_DRAW_SW_SUPPORT_L8			1
-	#define LV_DRAW_SW_SUPPORT_AL88			1
-	#define LV_DRAW_SW_SUPPORT_A8			1
-	#define LV_DRAW_SW_SUPPORT_I1			1
+    #define LV_DRAW_SW_SUPPORT_RGB565		1
+    #define LV_DRAW_SW_SUPPORT_RGB565A8		0
+    #define LV_DRAW_SW_SUPPORT_RGB888		0
+    #define LV_DRAW_SW_SUPPORT_XRGB8888		0
+    #define LV_DRAW_SW_SUPPORT_ARGB8888		0
+    #define LV_DRAW_SW_SUPPORT_L8			0
+    #define LV_DRAW_SW_SUPPORT_AL88			0
+    #define LV_DRAW_SW_SUPPORT_A8			0
+    #define LV_DRAW_SW_SUPPORT_I1			0
 
 	/* Set the number of draw unit.
      * > 1 requires an operating system enabled in `LV_USE_OS`
@@ -388,7 +388,7 @@
 #define LV_COLOR_MIX_ROUND_OFS  0
 
 /* Add 2 x 32 bit variables to each lv_obj_t to speed up getting style properties */
-#define LV_OBJ_STYLE_CACHE      0
+#define LV_OBJ_STYLE_CACHE      1
 
 /* Add `id` field to `lv_obj_t` */
 #define LV_USE_OBJ_ID           0

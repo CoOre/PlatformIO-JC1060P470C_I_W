@@ -15,36 +15,6 @@ namespace lgfx
 inline namespace v1
 {
 
-// Build-time overrides: set in platformio.ini as -DJD9165_RGB_ORDER=1, -DJD9165_DPI_FREQ_MHZ=48
-#ifndef JD9165_RGB_ORDER
-#define JD9165_RGB_ORDER 0
-#endif
-#ifndef JD9165_DPI_FREQ_MHZ
-#define JD9165_DPI_FREQ_MHZ 20
-#endif
-#ifndef USE_LGFX_TOUCH
-#define USE_LGFX_TOUCH 0
-#endif
-#ifndef TOUCH_I2C_PORT
-#define TOUCH_I2C_PORT 1
-#endif
-#ifndef TOUCH_I2C_SDA
-#define TOUCH_I2C_SDA TP_I2C_SDA
-#endif
-#ifndef TOUCH_I2C_SCL
-#define TOUCH_I2C_SCL TP_I2C_SCL
-#endif
-#ifndef TOUCH_I2C_FREQ
-#define TOUCH_I2C_FREQ 100000
-#endif
-#ifndef TOUCH_RST
-#define TOUCH_RST TP_RST
-#endif
-#ifndef TOUCH_INT
-#define TOUCH_INT TP_INT
-#endif
-
-// JD9165 panel definition matching the init sequence shared in LovyanGFX issue #803
 struct Panel_JD9165_Exact : public Panel_DSI
 {
 public:
@@ -56,7 +26,7 @@ public:
         cfg.pin_rst = LCD_RST;
         cfg.readable = false;
         cfg.invert = false;
-        cfg.rgb_order = JD9165_RGB_ORDER;
+        cfg.rgb_order = 0;
         cfg.offset_rotation = 0;
         config(cfg);
 
@@ -124,20 +94,19 @@ public:
             2, 0x12, 0x0C,
             2, 0x13, 0x0C,
             2, 0x30, 0x00,
-            2, 0x3A, 0x55, // RGB565 pixel format
-            // TE enable (tearing effect sync) like Arduino_GFX working example
+            2, 0x3A, 0x55,
             2, 0x34, 0x01,
             2, 0x35, 0x00,
-            0 // end of list
+            0
         };
 
         static constexpr uint8_t list1[] = {
-            1, 0x11, // SLPOUT, no params
+            1, 0x11,
             0
         };
 
         static constexpr uint8_t list2[] = {
-            1, 0x29, // DISPON, no params
+            1, 0x29,
             0
         };
 
@@ -152,8 +121,8 @@ public:
     size_t getInitDelay(size_t listno) const override
     {
         switch (listno) {
-        case 1: return 120; // after SLPOUT
-        case 2: return 50;  // after DISPON
+        case 1: return 120;
+        case 2: return 50;
         default: return 0;
         }
     }
@@ -168,28 +137,6 @@ public:
         return Panel_DSI::init(use_reset);
     }
 
-    void *getFrameBufferPtr() const { return _config_detail.buffer; }
-    bool registerDpiCallbacks(const esp_lcd_dpi_panel_event_callbacks_t *cbs, void *user_ctx) const
-    {
-        if (!_disp_panel_handle || !cbs) return false;
-        return esp_lcd_dpi_panel_register_event_callbacks(_disp_panel_handle, cbs, user_ctx) == ESP_OK;
-    }
-
-    bool getFrameBuffers(void **out_fb0, void **out_fb1) const
-    {
-        if (!out_fb0 || !out_fb1 || !_disp_panel_handle) return false;
-        void *fb0 = nullptr;
-        void *fb1 = nullptr;
-        esp_err_t err = esp_lcd_dpi_panel_get_frame_buffer(_disp_panel_handle, 2, &fb0, &fb1);
-        if (err == ESP_ERR_INVALID_ARG) {
-            err = esp_lcd_dpi_panel_get_frame_buffer(_disp_panel_handle, 1, &fb0);
-        }
-        if (err != ESP_OK || !fb0) return false;
-        *out_fb0 = fb0;
-        *out_fb1 = fb1;
-        return true;
-    }
-
 private:
     int8_t _backlight_pin = -1;
 };
@@ -201,27 +148,18 @@ class LGFX_JD9165 : public lgfx::LGFX_Device
 {
 public:
     LGFX_JD9165();
-    void *getFrameBufferPtr() const { return _panel.getFrameBufferPtr(); }
-    bool registerDpiCallbacks(const esp_lcd_dpi_panel_event_callbacks_t *cbs, void *user_ctx) const
-    {
-        return _panel.registerDpiCallbacks(cbs, user_ctx);
-    }
-    bool getFrameBuffers(void **out_fb0, void **out_fb1) const { return _panel.getFrameBuffers(out_fb0, out_fb1); }
 
 private:
     lgfx::Bus_DSI _bus;
     lgfx::Panel_JD9165_Exact _panel;
-#if USE_LGFX_TOUCH
     lgfx::Touch_GT911 _touch;
-#endif
 };
 
 inline LGFX_JD9165::LGFX_JD9165()
 {
     auto cfg = _bus.config();
-    
-    cfg.lane_mbps = 750; // align with proven Arduino_GFX working config
-    cfg.lane_num = 2;
+    cfg.lane_mbps = 800;
+    cfg.lane_num = 2; // 2 lanes @ 800 Mbps = 1.6 Gbps total
     cfg.bus_id = 0;
     cfg.ldo_voltage_mv = 2500;
     cfg.ldo_chan_id = 3;
@@ -229,26 +167,21 @@ inline LGFX_JD9165::LGFX_JD9165()
     cfg.lcd_param_bits = 8;
     _bus.config(cfg);
     _panel.setBus(&_bus);
-#if USE_LGFX_TOUCH
-    {
-        auto tcfg = _touch.config();
-        tcfg.i2c_port = TOUCH_I2C_PORT;
-        tcfg.pin_sda = TOUCH_I2C_SDA;
-        tcfg.pin_scl = TOUCH_I2C_SCL;
-        tcfg.pin_rst = TOUCH_RST;
-        tcfg.pin_int = TOUCH_INT;
-        tcfg.freq = TOUCH_I2C_FREQ;
-        tcfg.x_min = 0;
-        tcfg.x_max = LCD_H_RES - 1;
-        tcfg.y_min = 0;
-        tcfg.y_max = LCD_V_RES - 1;
-#ifdef TOUCH_I2C_ADDR
-        tcfg.i2c_addr = TOUCH_I2C_ADDR;
-#endif
-        tcfg.bus_shared = true;
-        _touch.config(tcfg);
-        _panel.setTouch(&_touch);
-    }
-#endif
+
+    auto tcfg = _touch.config();
+    tcfg.i2c_port = 1;
+    tcfg.pin_sda = TP_I2C_SDA;
+    tcfg.pin_scl = TP_I2C_SCL;
+    tcfg.pin_rst = TP_RST;
+    tcfg.pin_int = TP_INT;
+    tcfg.freq = 100000;
+    tcfg.x_min = 0;
+    tcfg.x_max = LCD_H_RES - 1;
+    tcfg.y_min = 0;
+    tcfg.y_max = LCD_V_RES - 1;
+    tcfg.bus_shared = true;
+    _touch.config(tcfg);
+    _panel.setTouch(&_touch);
+
     setPanel(&_panel);
 }
