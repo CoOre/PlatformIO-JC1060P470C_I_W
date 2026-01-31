@@ -1,0 +1,140 @@
+#include "ui_main_screen.h"
+#include "ui_manager.h"
+#include "ui_status_bar.h"
+
+namespace ui {
+
+MainScreen::MainScreen() = default;
+
+MainScreen::~MainScreen() {
+    if (current_app_) {
+        delete current_app_;
+    }
+    if (launcher_) {
+        delete launcher_;
+    }
+}
+
+bool MainScreen::create(lv_obj_t* parent) {
+    if (!parent) return false;
+
+    setupContainer(parent);
+    createLauncher();
+
+    return true;
+}
+
+void MainScreen::setupContainer(lv_obj_t* parent) {
+    // Main container fills remaining space in flex layout
+    container_ = lv_obj_create(parent);
+    lv_obj_set_width(container_, LV_PCT(100));
+    // Use flex grow to fill remaining space instead of 100% height
+    lv_obj_set_height(container_, LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(container_, 1);
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Remove padding
+    lv_obj_set_style_pad_all(container_, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(container_, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(container_, 0, LV_PART_MAIN);
+    lv_obj_set_style_margin_all(container_, 0, LV_PART_MAIN);
+
+    // Style
+    lv_obj_set_style_bg_color(container_, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(container_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(container_, 0, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(container_, 0, LV_PART_MAIN);
+}
+
+void MainScreen::createLauncher() {
+    launcher_ = new AppLauncher();
+    launcher_->create(container_);
+
+    // Add Box Test App
+    AppInfo box_test_app;
+    box_test_app.name = "Box Test";
+    box_test_app.icon = nullptr; // Using color placeholder
+    box_test_app.color = 0x2196F3; // Blue
+    box_test_app.onLaunch = [this]() {
+        launchBoxTestApp();
+    };
+    launcher_->addApp(box_test_app);
+
+    // Add placeholder apps for demo
+    const char* app_names[] = {"Settings", "Gallery", "Music", "Files", "Calculator"};
+    uint32_t app_colors[] = {0x4CAF50, 0xFF9800, 0x9C27B0, 0x607D8B, 0xF44336};
+
+    for (int i = 0; i < 5; i++) {
+        AppInfo app;
+        app.name = app_names[i];
+        app.icon = nullptr;
+        app.color = app_colors[i];
+        app.onLaunch = []() {
+            // Placeholder - just log
+        };
+        launcher_->addApp(app);
+    }
+
+    // Set callback when app is launched
+    launcher_->setOnAppLaunch([this](const AppInfo& app) {
+        if (app.onLaunch) {
+            app.onLaunch();
+        }
+        if (on_app_launch_) {
+            on_app_launch_();
+        }
+    });
+}
+
+void MainScreen::launchBoxTestApp() {
+    // Hide launcher first
+    launcher_->hide();
+
+    // Delete any existing app first
+    if (current_app_) {
+        current_app_->destroy();
+        delete current_app_;
+        current_app_ = nullptr;
+    }
+
+    // Create and show box test app
+    current_app_ = new BoxTestApp();
+    current_app_->create(container_);
+
+    // Force layout update
+    lv_obj_update_layout(container_);
+
+    // Notify that we left launcher
+    if (on_app_launch_) {
+        on_app_launch_();
+    }
+}
+
+void MainScreen::showLauncher() {
+    // Destroy current app if any
+    if (current_app_) {
+        current_app_->destroy();
+        delete current_app_;
+        current_app_ = nullptr;
+    }
+
+    // Show launcher
+    launcher_->show();
+}
+
+bool MainScreen::isInLauncher() const {
+    return launcher_ && launcher_->isVisible();
+}
+
+void MainScreen::update(uint32_t now_ms) {
+    if (current_app_ && current_app_->isActive()) {
+        current_app_->update(now_ms);
+    }
+}
+
+void MainScreen::setOnAppLaunch(std::function<void()> callback) {
+    on_app_launch_ = callback;
+}
+
+} // namespace ui
