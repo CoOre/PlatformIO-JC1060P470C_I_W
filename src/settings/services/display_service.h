@@ -101,6 +101,16 @@ public:
      */
     void setTargetBrightness(uint8_t brightness);
     
+    /**
+     * @brief Get idle brightness (0-100%)
+     */
+    uint8_t getIdleBrightness() const;
+    
+    /**
+     * @brief Set idle brightness (0-100%)
+     */
+    void setIdleBrightness(uint8_t brightness);
+    
     // ============================================================================
     // Timeout Control
     // ============================================================================
@@ -151,7 +161,7 @@ public:
     /**
      * @brief Check if backlight is currently dimmed/off
      */
-    bool isDimmed() const { return current_brightness_ < target_brightness_; }
+    bool isDimmed() const { return dimmed_; }
     bool isOff() const { return current_brightness_ == 0; }
     
     /**
@@ -198,6 +208,8 @@ private:
     // Brightness
     uint8_t target_brightness_ = 80;
     uint8_t current_brightness_ = 80;
+    uint8_t active_brightness_ = 80;
+    uint8_t idle_brightness_ = 10;
     static constexpr uint8_t BRIGHTNESS_STEP = 5;
     static constexpr uint32_t TRANSITION_INTERVAL_MS = 20;
     
@@ -205,8 +217,7 @@ private:
     uint32_t timeout_ms_ = 60000;
     volatile bool activity_pending_ = false;
     
-    // Dim levels
-    static constexpr uint8_t DIM_BRIGHTNESS = 10;  // 10% when dimmed
+    bool dimmed_ = false;
     
     // Rotation
     uint8_t rotation_ = 0;  // 0=0°, 1=90°, 2=180°, 3=270°

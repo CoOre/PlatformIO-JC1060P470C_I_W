@@ -128,6 +128,11 @@ static void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data)
     
     // Update UI manager with touch state
     ui::UIManager::instance().setTouchActive(touched);
+    
+    // Reset backlight timeout on user activity
+    if (touched) {
+        settings::DisplayService::instance().markActivity();
+    }
 
     // Debug: log touch coordinates (throttled)
     static uint32_t last_debug_time = 0;
@@ -302,6 +307,8 @@ void setup()
 
 void loop()
 {
+    static constexpr uint32_t TARGET_FPS = 30;
+    static constexpr uint32_t FRAME_TIME_MS = 1000 / TARGET_FPS;
     static uint32_t last_ms = 0;
     uint32_t now = millis();
     uint32_t elapsed = (last_ms == 0) ? 0 : (now - last_ms);
@@ -326,4 +333,9 @@ void loop()
     
     lv_timer_handler();
     update_fps_counter();
+
+    uint32_t frame_time = millis() - now;
+    if (frame_time < FRAME_TIME_MS) {
+        delay(FRAME_TIME_MS - frame_time);
+    }
 }

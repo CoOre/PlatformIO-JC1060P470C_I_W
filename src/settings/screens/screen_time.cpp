@@ -35,6 +35,13 @@ bool TimeScreen::create(lv_obj_t* parent) {
     if (!parent) return false;
     
     setupContainer(parent);
+    theme_ = currentThemeColors();
+    lv_obj_set_style_bg_color(container_, theme_.screen_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(container_, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(container_, 12, LV_PART_MAIN);
+    lv_obj_set_scroll_dir(container_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_AUTO);
     
     createHeader();
     createCurrentTimeSection();
@@ -76,34 +83,49 @@ void TimeScreen::update(uint32_t now_ms) {
 
 void TimeScreen::createHeader() {
     header_ = lv_obj_create(container_);
-    lv_obj_set_size(header_, LV_PCT(100), 50);
-    lv_obj_set_style_pad_all(header_, 10, LV_PART_MAIN);
-    lv_obj_set_style_border_width(header_, 0, LV_PART_MAIN);
+    lv_obj_set_size(header_, LV_PCT(100), 56);
+    lv_obj_set_style_bg_color(header_, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(header_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(header_, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(header_, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(header_, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(header_, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(header_, 0, LV_PART_MAIN);
+    lv_obj_set_layout(header_, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(header_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
     
     lv_obj_t* title = lv_label_create(header_);
     lv_label_set_text(title, S(TIME_TITLE));
     lv_obj_set_style_text_font(title, &lv_font_roboto_18, LV_PART_MAIN);
-    lv_obj_center(title);
+    lv_obj_set_style_text_color(title, theme_.title, LV_PART_MAIN);
 }
 
 void TimeScreen::createCurrentTimeSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 15, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 6, LV_PART_MAIN);
     
-    // Current time label
     lv_obj_t* label = lv_label_create(section);
     lv_label_set_text(label, S(TIME_CURRENT));
-    lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_text_font(label, &lv_font_roboto_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(label, theme_.title, LV_PART_MAIN);
     
-    // Time
     time_label_ = lv_label_create(section);
     lv_obj_set_style_text_font(time_label_, &lv_font_roboto_24, LV_PART_MAIN);
-    lv_obj_align(time_label_, LV_ALIGN_TOP_LEFT, 0, 30);
+    lv_obj_set_style_text_color(time_label_, theme_.title, LV_PART_MAIN);
     
-    // Date
     date_label_ = lv_label_create(section);
-    lv_obj_align(date_label_, LV_ALIGN_TOP_LEFT, 0, 60);
+    lv_obj_set_style_text_color(date_label_, theme_.muted, LV_PART_MAIN);
     
     refreshTimeDisplay();
 }
@@ -111,17 +133,33 @@ void TimeScreen::createCurrentTimeSection() {
 void TimeScreen::createTimezoneSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 15, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 10, LV_PART_MAIN);
     
-    // Label
-    lv_obj_t* label = lv_label_create(section);
+    lv_obj_t* row = lv_obj_create(section);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
+    lv_obj_set_layout(row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    
+    lv_obj_t* label = lv_label_create(row);
     lv_label_set_text(label, S(TIME_TIMEZONE));
-    lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_text_font(label, &lv_font_roboto_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(label, theme_.title, LV_PART_MAIN);
     
-    // Dropdown
-    timezone_dropdown_ = lv_dropdown_create(section);
+    timezone_dropdown_ = lv_dropdown_create(row);
     lv_obj_set_size(timezone_dropdown_, 280, 40);
-    lv_obj_align(timezone_dropdown_, LV_ALIGN_TOP_LEFT, 0, 30);
     
     // Build options
     char options[512] = {};
@@ -146,15 +184,32 @@ void TimeScreen::createTimezoneSection() {
 void TimeScreen::createNtpSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 15, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 10, LV_PART_MAIN);
     
-    // NTP enable switch
-    lv_obj_t* switch_label = lv_label_create(section);
+    lv_obj_t* top_row = lv_obj_create(section);
+    lv_obj_set_size(top_row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(top_row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(top_row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(top_row, 0, LV_PART_MAIN);
+    lv_obj_set_layout(top_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(top_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    
+    lv_obj_t* switch_label = lv_label_create(top_row);
     lv_label_set_text(switch_label, S(TIME_NTP_ENABLED));
-    lv_obj_align(switch_label, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_text_font(switch_label, &lv_font_roboto_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(switch_label, theme_.title, LV_PART_MAIN);
     
-    ntp_switch_ = lv_switch_create(section);
-    lv_obj_align(ntp_switch_, LV_ALIGN_TOP_RIGHT, 0, 0);
+    ntp_switch_ = lv_switch_create(top_row);
     
     if (TimeService::instance().isNtpEnabled()) {
         lv_obj_add_state(ntp_switch_, LV_STATE_CHECKED);
@@ -162,22 +217,23 @@ void TimeScreen::createNtpSection() {
     
     lv_obj_add_event_cb(ntp_switch_, onNtpToggle, LV_EVENT_VALUE_CHANGED, this);
     
-    // NTP Server
     lv_obj_t* server_label = lv_label_create(section);
     lv_label_set_text(server_label, S(TIME_NTP_SERVER));
-    lv_obj_align(server_label, LV_ALIGN_TOP_LEFT, 0, 40);
+    lv_obj_set_style_text_font(server_label, &lv_font_roboto_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(server_label, theme_.muted, LV_PART_MAIN);
     
     ntp_server_ta_ = lv_textarea_create(section);
-    lv_obj_set_size(ntp_server_ta_, 200, 40);
-    lv_obj_align(ntp_server_ta_, LV_ALIGN_TOP_LEFT, 0, 65);
+    lv_obj_set_size(ntp_server_ta_, LV_PCT(100), 40);
     lv_textarea_set_one_line(ntp_server_ta_, true);
     lv_textarea_set_text(ntp_server_ta_, TimeService::instance().getNtpServer());
+    lv_obj_set_style_border_color(ntp_server_ta_, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_border_width(ntp_server_ta_, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(ntp_server_ta_, 10, LV_PART_MAIN);
     
-    // Sync now button
     lv_obj_t* sync_btn = lv_btn_create(section);
-    lv_obj_set_size(sync_btn, 120, 40);
-    lv_obj_align(sync_btn, LV_ALIGN_TOP_RIGHT, 0, 65);
-    lv_obj_set_style_bg_color(sync_btn, lv_color_hex(0x4CAF50), LV_PART_MAIN);
+    lv_obj_set_size(sync_btn, 160, 40);
+    lv_obj_set_style_bg_color(sync_btn, theme_.accent, LV_PART_MAIN);
+    lv_obj_set_style_radius(sync_btn, 10, LV_PART_MAIN);
     
     lv_obj_t* btn_label = lv_label_create(sync_btn);
     lv_label_set_text(btn_label, S(TIME_SYNC_NOW));
@@ -185,21 +241,27 @@ void TimeScreen::createNtpSection() {
     
     lv_obj_add_event_cb(sync_btn, onSyncNowClicked, LV_EVENT_CLICKED, this);
     
-    // Status
     ntp_status_label_ = lv_label_create(section);
-    lv_obj_align(ntp_status_label_, LV_ALIGN_TOP_LEFT, 0, 115);
+    lv_obj_set_style_text_color(ntp_status_label_, theme_.muted, LV_PART_MAIN);
     refreshNtpStatus();
 }
 
 void TimeScreen::createManualSetSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 15, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
     
-    // Manual set button
     lv_obj_t* manual_btn = lv_btn_create(section);
-    lv_obj_set_size(manual_btn, LV_PCT(100), 50);
-    lv_obj_set_style_bg_color(manual_btn, lv_color_hex(0xFF9800), LV_PART_MAIN);
+    lv_obj_set_size(manual_btn, LV_PCT(100), 46);
+    lv_obj_set_style_bg_color(manual_btn, theme_.accent, LV_PART_MAIN);
+    lv_obj_set_style_radius(manual_btn, 10, LV_PART_MAIN);
     
     lv_obj_t* btn_label = lv_label_create(manual_btn);
     lv_label_set_text(btn_label, S(TIME_MANUAL_SET));

@@ -5,6 +5,7 @@
 #include "services/wifi_service.h"
 #include "services/time_service.h"
 #include "services/display_service.h"
+#include "core/theme.h"
 #include "i18n/i18n.h"
 #include "pins_config.h"
 #include "esp_log.h"
@@ -167,9 +168,17 @@ void SettingsApp::setupContainer(lv_obj_t* parent) {
     lv_obj_set_style_shadow_width(container_, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(container_, 0, LV_PART_MAIN);
     
-    // White background
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    ThemeColors theme = currentThemeColors();
+    lv_obj_set_style_bg_color(container_, theme.screen_bg, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+}
+
+void SettingsApp::applyTheme() {
+    if (!container_) return;
+    ThemeColors theme = currentThemeColors();
+    lv_obj_set_style_bg_color(container_, theme.screen_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    UIRouter::instance().reloadTheme();
 }
 
 } // namespace settings

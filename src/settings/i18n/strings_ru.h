@@ -60,6 +60,7 @@ static const char* const STRINGS_RU[static_cast<size_t>(StringID::COUNT)] = {
     // Display
     [static_cast<size_t>(StringID::DISPLAY_TITLE)] = "Экран",
     [static_cast<size_t>(StringID::DISPLAY_BRIGHTNESS)] = "Яркость",
+    [static_cast<size_t>(StringID::DISPLAY_IDLE_BRIGHTNESS)] = "Яркость при бездействии",
     [static_cast<size_t>(StringID::DISPLAY_TIMEOUT)] = "Таймаут подсветки",
     [static_cast<size_t>(StringID::DISPLAY_TIMEOUT_15S)] = "15 сек",
     [static_cast<size_t>(StringID::DISPLAY_TIMEOUT_30S)] = "30 сек",
@@ -71,6 +72,9 @@ static const char* const STRINGS_RU[static_cast<size_t>(StringID::COUNT)] = {
     [static_cast<size_t>(StringID::DISPLAY_ROTATION_90)] = "90°",
     [static_cast<size_t>(StringID::DISPLAY_ROTATION_180)] = "180°",
     [static_cast<size_t>(StringID::DISPLAY_ROTATION_270)] = "270°",
+    [static_cast<size_t>(StringID::DISPLAY_THEME)] = "Тема",
+    [static_cast<size_t>(StringID::DISPLAY_THEME_LIGHT)] = "Светлая",
+    [static_cast<size_t>(StringID::DISPLAY_THEME_DARK)] = "Тёмная",
     
     // Time
     [static_cast<size_t>(StringID::TIME_TITLE)] = "Время",

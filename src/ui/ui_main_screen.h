@@ -5,6 +5,7 @@
 #include "box_test_app.h"
 #include "clock_app.h"
 #include "settings/settings_app.h"
+#include "settings/core/theme.h"
 #include <cstdint>
 #include <functional>
 
@@ -54,6 +55,11 @@ public:
      * @brief Set callback when app is launched
      */
     void setOnAppLaunch(std::function<void()> callback);
+
+    /**
+     * @brief Apply current theme to main screen and active apps
+     */
+    void applyTheme(const settings::ThemeColors& theme);
 
     /**
      * @brief Get the container object

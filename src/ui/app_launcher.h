@@ -6,6 +6,7 @@
 
 #include "lvgl.h"
 #include "settings/i18n/i18n.h"
+#include "settings/core/theme.h"
 
 namespace ui {
 
@@ -54,6 +55,11 @@ public:
     void show();
     void hide();
     bool isVisible() const;
+
+    /**
+     * @brief Apply current theme to launcher
+     */
+    void applyTheme(const settings::ThemeColors& theme);
 
 private:
     void createGrid();

@@ -170,6 +170,11 @@ public:
      * @return true if handled (popped or screen handled it)
      */
     bool goBack();
+
+    /**
+     * @brief Recreate all screens in stack to apply theme changes
+     */
+    void reloadTheme();
     
     // ============================================================================
     // Queries

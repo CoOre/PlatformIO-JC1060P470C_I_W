@@ -12,7 +12,7 @@ namespace settings {
 // ============================================================================
 // Schema Version
 // ============================================================================
-static constexpr uint32_t SETTINGS_SCHEMA_VERSION = 2;
+static constexpr uint32_t SETTINGS_SCHEMA_VERSION = 4;
 
 // ============================================================================
 // Constants
@@ -23,6 +23,11 @@ static constexpr size_t MAX_PASS_LEN = 64;
 static constexpr size_t MAX_HOSTNAME_LEN = 32;
 static constexpr size_t MAX_TIMEZONE_LEN = 64;
 static constexpr size_t MAX_NTP_SERVER_LEN = 64;
+
+enum class ThemeMode : uint8_t {
+    LIGHT = 0,
+    DARK = 1
+};
 
 // ============================================================================
 // Data Structures
@@ -65,8 +70,10 @@ struct WiFiSettings {
  */
 struct DisplaySettings {
     uint8_t brightness = 80;              // 0-100%
+    uint8_t idle_brightness = 10;         // 0-100% when idle
     uint32_t timeout_ms = 60000;          // 0 = never, else milliseconds
     uint8_t rotation = 0;                 // 0=0°, 1=90°, 2=180°, 3=270°
+    ThemeMode theme = ThemeMode::LIGHT;
     
     static constexpr uint32_t TIMEOUT_15S = 15000;
     static constexpr uint32_t TIMEOUT_30S = 30000;
@@ -82,8 +89,10 @@ struct DisplaySettings {
     
     void clear() {
         brightness = 80;
+        idle_brightness = 10;
         timeout_ms = TIMEOUT_1M;
         rotation = ROTATION_0;
+        theme = ThemeMode::LIGHT;
     }
 };
 
@@ -212,11 +221,17 @@ public:
     uint8_t getBrightness() const;
     void setBrightness(uint8_t brightness);  // 0-100
     
+    uint8_t getIdleBrightness() const;
+    void setIdleBrightness(uint8_t brightness);  // 0-100
+    
     uint32_t getDisplayTimeoutMs() const;
     void setDisplayTimeoutMs(uint32_t timeout_ms);
     
     uint8_t getRotation() const;             // 0=0°, 1=90°, 2=180°, 3=270°
     void setRotation(uint8_t rotation);
+
+    ThemeMode getTheme() const;
+    void setTheme(ThemeMode theme);
     
     // ============================================================================
     // Time Settings

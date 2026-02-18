@@ -1,6 +1,7 @@
 #include "app_launcher.h"
 #include "ui_manager.h"
 #include "esp_log.h"
+#include "settings/core/theme.h"
 
 namespace ui {
 
@@ -19,25 +20,28 @@ bool AppLauncher::create(lv_obj_t* parent) {
     lv_obj_set_size(container_, LV_PCT(100), LV_PCT(100));
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // White background
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(container_, 16, LV_PART_MAIN);
-    // Use full width; keep a bit of vertical air.
+    lv_obj_set_style_pad_all(container_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_hor(container_, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(container_, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(container_, 0, LV_PART_MAIN);
 
     createGrid();
+    applyTheme(settings::currentThemeColors());
     visible_ = true;
     return true;
 }
 
 void AppLauncher::createGrid() {
+    static_assert(kColumns == 4, "AppLauncher grid must be 4 columns");
+    static_assert(kRows == 4, "AppLauncher grid must be 4 rows");
+
     grid_ = lv_obj_create(container_);
     lv_obj_set_size(grid_, LV_PCT(100), LV_PCT(100));
     lv_obj_clear_flag(grid_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(grid_, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(grid_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_hor(grid_, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(grid_, 0, LV_PART_MAIN);
     
     // Grid layout - 4x4 with equal column and row sizes
     lv_obj_set_layout(grid_, LV_LAYOUT_GRID);
@@ -52,13 +56,18 @@ void AppLauncher::createGrid() {
         kGridCols,
         kGridRows);
     
-    lv_obj_set_style_pad_row(grid_, kSpacing, LV_PART_MAIN);
-    lv_obj_set_style_pad_column(grid_, kSpacing, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(grid_, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_column(grid_, 0, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(grid_, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(grid_, 0, LV_PART_MAIN);
 }
 
 void AppLauncher::addApp(const AppInfo& app) {
+    if (apps_.size() >= static_cast<size_t>(kColumns * kRows)) {
+        ESP_LOGW("AppLauncher", "Grid is full (%dx%d). App skipped.", kColumns, kRows);
+        return;
+    }
+
     AppEntry entry;
     entry.info = app;
     apps_.push_back(entry);
@@ -98,7 +107,7 @@ void AppLauncher::addApp(const AppInfo& app) {
     lv_obj_t* label = lv_label_create(container);
     lv_label_set_text(label, getAppDisplayName(apps_[index].info));
     lv_obj_set_style_text_font(label, &lv_font_roboto_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(label, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_text_color(label, settings::currentThemeColors().title, LV_PART_MAIN);
 
     // Store app index in user data (on the icon button)
     lv_obj_set_user_data(btn, reinterpret_cast<void*>(index));
@@ -171,6 +180,21 @@ void AppLauncher::refreshLabels() {
     for (auto& entry : apps_) {
         if (entry.label) {
             lv_label_set_text(entry.label, getAppDisplayName(entry.info));
+        }
+    }
+}
+
+void AppLauncher::applyTheme(const settings::ThemeColors& theme) {
+    if (container_) {
+        lv_obj_set_style_bg_color(container_, theme.screen_bg, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    }
+    if (grid_) {
+        lv_obj_set_style_bg_opa(grid_, LV_OPA_TRANSP, LV_PART_MAIN);
+    }
+    for (auto& entry : apps_) {
+        if (entry.label) {
+            lv_obj_set_style_text_color(entry.label, theme.title, LV_PART_MAIN);
         }
     }
 }

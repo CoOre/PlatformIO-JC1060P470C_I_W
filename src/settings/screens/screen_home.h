@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../navigation/ui_router.h"
+#include "../core/theme.h"
 
 namespace settings {
 
@@ -36,6 +37,7 @@ private:
 
     lv_obj_t* header_ = nullptr;
     lv_obj_t* menu_list_ = nullptr;
+    ThemeColors theme_;
 };
 
 } // namespace settings

@@ -3,6 +3,7 @@
 #include "lvgl.h"
 #include <cstdint>
 #include <functional>
+#include "settings/core/theme.h"
 
 namespace ui {
 
@@ -56,6 +57,11 @@ public:
      * @brief Set callback for back button click
      */
     void setBackButtonCallback(std::function<void()> callback);
+
+    /**
+     * @brief Apply current theme to status bar
+     */
+    void applyTheme(const settings::ThemeColors& theme);
 
     /**
      * @brief Get the height of the status bar

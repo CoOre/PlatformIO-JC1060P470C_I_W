@@ -14,6 +14,27 @@ static constexpr uint32_t UPDATE_INTERVAL_MS = 1000;  // 1 second updates
 
 TimeService* TimeService::instance_ = nullptr;
 
+namespace {
+
+struct AsyncTimeEvent {
+    lv_obj_t* obj;
+    TimeEventData data;
+};
+
+void send_time_event_async(void* user) {
+    AsyncTimeEvent* payload = static_cast<AsyncTimeEvent*>(user);
+    if (!payload) return;
+
+    if (payload->obj && lv_obj_is_valid(payload->obj)) {
+        TimeEventData* evt_copy = new TimeEventData(payload->data);
+        lv_obj_send_event(payload->obj, LV_EVENT_VALUE_CHANGED, evt_copy);
+    }
+
+    delete payload;
+}
+
+} // namespace
+
 // ============================================================================
 // Singleton
 // ============================================================================
@@ -165,10 +186,11 @@ void TimeService::notifyEvent(const TimeEventData& data) {
 }
 
 void TimeService::sendLVGLEvent(const TimeEventData& data) {
-    if (!ui_event_obj_) return;
-    
-    TimeEventData* evt_copy = new TimeEventData(data);
-    lv_obj_send_event(ui_event_obj_, LV_EVENT_VALUE_CHANGED, evt_copy);
+    lv_obj_t* obj = ui_event_obj_;
+    if (!obj) return;
+
+    AsyncTimeEvent* payload = new AsyncTimeEvent{ obj, data };
+    lv_async_call(send_time_event_async, payload);
 }
 
 // ============================================================================

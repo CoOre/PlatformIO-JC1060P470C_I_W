@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../navigation/ui_router.h"
+#include "../core/theme.h"
 #include "../services/time_service.h"
 
 namespace settings {
@@ -64,6 +65,7 @@ private:
     lv_obj_t* minute_roller_ = nullptr;
     lv_obj_t* set_btn_ = nullptr;
     lv_obj_t* cancel_btn_ = nullptr;
+    ThemeColors theme_;
     
     bool showing_manual_dialog_ = false;
 };

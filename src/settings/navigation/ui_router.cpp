@@ -238,6 +238,46 @@ void UIRouter::update(uint32_t now_ms) {
     }
 }
 
+void UIRouter::reloadTheme() {
+    if (!parent_) return;
+
+    std::vector<ScreenType> types;
+    types.reserve(stack_.size());
+    for (auto* screen : stack_) {
+        if (screen) {
+            types.push_back(screen->getType());
+        }
+    }
+
+    while (!stack_.empty()) {
+        Screen* screen = stack_.back();
+        stack_.pop_back();
+        if (screen) {
+            screen->onHide();
+            screen->destroy();
+            delete screen;
+        }
+    }
+
+    for (size_t i = 0; i < types.size(); i++) {
+        Screen* screen = createScreen(types[i]);
+        if (!screen) continue;
+        if (!screen->create(parent_)) {
+            delete screen;
+            continue;
+        }
+        if (!stack_.empty()) {
+            Screen* previous = stack_.back();
+            if (previous && previous->getContainer()) {
+                previous->onHide();
+                lv_obj_add_flag(previous->getContainer(), LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+        stack_.push_back(screen);
+        screen->onShow();
+    }
+}
+
 // ============================================================================
 // Screen Factory
 // ============================================================================

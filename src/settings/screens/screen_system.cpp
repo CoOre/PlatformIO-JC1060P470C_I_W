@@ -18,6 +18,13 @@ bool SystemScreen::create(lv_obj_t* parent) {
     if (!parent) return false;
     
     setupContainer(parent);
+    theme_ = currentThemeColors();
+    lv_obj_set_style_bg_color(container_, theme_.screen_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(container_, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(container_, 12, LV_PART_MAIN);
+    lv_obj_set_scroll_dir(container_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_AUTO);
     
     createHeader();
     createInfoSection();
@@ -52,43 +59,51 @@ void SystemScreen::update(uint32_t now_ms) {
 
 void SystemScreen::createHeader() {
     header_ = lv_obj_create(container_);
-    lv_obj_set_size(header_, LV_PCT(100), 50);
-    lv_obj_set_style_pad_all(header_, 10, LV_PART_MAIN);
-    lv_obj_set_style_border_width(header_, 0, LV_PART_MAIN);
+    lv_obj_set_size(header_, LV_PCT(100), 56);
+    lv_obj_set_style_bg_color(header_, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(header_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(header_, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(header_, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(header_, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(header_, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(header_, 0, LV_PART_MAIN);
+    lv_obj_set_layout(header_, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(header_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
     
     lv_obj_t* title = lv_label_create(header_);
     lv_label_set_text(title, S(SYSTEM_TITLE));
     lv_obj_set_style_text_font(title, &lv_font_roboto_18, LV_PART_MAIN);
-    lv_obj_center(title);
+    lv_obj_set_style_text_color(title, theme_.title, LV_PART_MAIN);
 }
 
 void SystemScreen::createInfoSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 15, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 8, LV_PART_MAIN);
     
-    int y = 0;
-    
-    // Version
     version_label_ = lv_label_create(section);
     lv_label_set_text_fmt(version_label_, "%s: %s", 
                           S(SYSTEM_FIRMWARE_VERSION), FIRMWARE_VERSION);
-    lv_obj_align(version_label_, LV_ALIGN_TOP_LEFT, 0, y);
-    y += 30;
+    lv_obj_set_style_text_color(version_label_, theme_.title, LV_PART_MAIN);
     
-    // Uptime
     uptime_label_ = lv_label_create(section);
-    lv_obj_align(uptime_label_, LV_ALIGN_TOP_LEFT, 0, y);
-    y += 30;
+    lv_obj_set_style_text_color(uptime_label_, theme_.muted, LV_PART_MAIN);
     
-    // Heap
     heap_label_ = lv_label_create(section);
-    lv_obj_align(heap_label_, LV_ALIGN_TOP_LEFT, 0, y);
-    y += 30;
+    lv_obj_set_style_text_color(heap_label_, theme_.muted, LV_PART_MAIN);
     
-    // PSRAM
     psram_label_ = lv_label_create(section);
-    lv_obj_align(psram_label_, LV_ALIGN_TOP_LEFT, 0, y);
+    lv_obj_set_style_text_color(psram_label_, theme_.muted, LV_PART_MAIN);
     
     refreshInfo();
 }
@@ -96,12 +111,20 @@ void SystemScreen::createInfoSection() {
 void SystemScreen::createActionsSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 15, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 10, LV_PART_MAIN);
     
-    // Reset button
     lv_obj_t* reset_btn = lv_btn_create(section);
-    lv_obj_set_size(reset_btn, LV_PCT(100), 50);
-    lv_obj_set_style_bg_color(reset_btn, lv_color_hex(0xF44336), LV_PART_MAIN);
+    lv_obj_set_size(reset_btn, LV_PCT(100), 46);
+    lv_obj_set_style_bg_color(reset_btn, theme_.accent, LV_PART_MAIN);
+    lv_obj_set_style_radius(reset_btn, 10, LV_PART_MAIN);
     
     lv_obj_t* reset_lbl = lv_label_create(reset_btn);
     lv_label_set_text(reset_lbl, S(SYSTEM_RESET_SETTINGS));
@@ -109,11 +132,10 @@ void SystemScreen::createActionsSection() {
     
     lv_obj_add_event_cb(reset_btn, onResetClicked, LV_EVENT_CLICKED, this);
     
-    // Reboot button
     lv_obj_t* reboot_btn = lv_btn_create(section);
-    lv_obj_set_size(reboot_btn, LV_PCT(100), 50);
-    lv_obj_align(reboot_btn, LV_ALIGN_TOP_MID, 0, 60);
-    lv_obj_set_style_bg_color(reboot_btn, lv_color_hex(0xFF9800), LV_PART_MAIN);
+    lv_obj_set_size(reboot_btn, LV_PCT(100), 46);
+    lv_obj_set_style_bg_color(reboot_btn, theme_.accent_soft, LV_PART_MAIN);
+    lv_obj_set_style_radius(reboot_btn, 10, LV_PART_MAIN);
     
     lv_obj_t* reboot_lbl = lv_label_create(reboot_btn);
     lv_label_set_text(reboot_lbl, S(SYSTEM_REBOOT));
@@ -126,7 +148,10 @@ void SystemScreen::createConfirmDialog() {
     confirm_dialog_ = lv_obj_create(container_);
     lv_obj_set_size(confirm_dialog_, 400, 200);
     lv_obj_center(confirm_dialog_);
-    lv_obj_set_style_bg_color(confirm_dialog_, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(confirm_dialog_, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_radius(confirm_dialog_, 12, LV_PART_MAIN);
+    lv_obj_set_style_border_width(confirm_dialog_, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(confirm_dialog_, theme_.card_border, LV_PART_MAIN);
     lv_obj_add_flag(confirm_dialog_, LV_OBJ_FLAG_HIDDEN);
     
     // Message label
@@ -153,7 +178,7 @@ void SystemScreen::createConfirmDialog() {
     
     lv_obj_t* yes_btn = lv_btn_create(btn_container);
     lv_obj_set_size(yes_btn, 150, 40);
-    lv_obj_set_style_bg_color(yes_btn, lv_color_hex(0xF44336), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(yes_btn, theme_.accent, LV_PART_MAIN);
     lv_obj_t* yes_lbl = lv_label_create(yes_btn);
     lv_label_set_text(yes_lbl, S(OK));
     lv_obj_center(yes_lbl);

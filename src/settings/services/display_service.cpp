@@ -36,7 +36,9 @@ bool DisplayService::init(uint8_t backlight_pin, uint8_t pwm_channel,
     
     // Load settings
     SettingsStore& store = SettingsStore::instance();
-    target_brightness_ = store.getBrightness();
+    active_brightness_ = store.getBrightness();
+    idle_brightness_ = store.getIdleBrightness();
+    target_brightness_ = active_brightness_;
     current_brightness_ = target_brightness_;
     timeout_ms_ = store.getDisplayTimeoutMs();
     
@@ -166,8 +168,12 @@ void DisplayService::runTask() {
                 xTimerReset(timeout_timer_, 0);
             }
             
-            // Restore brightness if dimmed
-            if (current_brightness_ < target_brightness_) {
+            if (dimmed_) {
+                dimmed_ = false;
+                target_brightness_ = active_brightness_;
+            }
+            
+            if (current_brightness_ != target_brightness_) {
                 current_brightness_ = target_brightness_;
                 applyBrightness(current_brightness_);
                 
@@ -202,7 +208,8 @@ void DisplayService::onTimeout() {
     ESP_LOGI(TAG, "Display timeout - dimming");
     
     // Dim first
-    target_brightness_ = DIM_BRIGHTNESS;
+    dimmed_ = true;
+    target_brightness_ = idle_brightness_;
     
     DisplayEventData evt;
     evt.event = DisplayEvent::BACKLIGHT_DIMMED;
@@ -251,14 +258,17 @@ void DisplayService::setBrightness(uint8_t brightness, bool immediate) {
     
     if (mutex_) {
         xSemaphoreTake(mutex_, portMAX_DELAY);
-        target_brightness_ = brightness;
-        if (immediate) {
-            current_brightness_ = brightness;
+        active_brightness_ = brightness;
+        if (!dimmed_) {
+            target_brightness_ = brightness;
+            if (immediate) {
+                current_brightness_ = brightness;
+            }
         }
         xSemaphoreGive(mutex_);
     }
     
-    if (immediate) {
+    if (immediate && !dimmed_) {
         applyBrightness(brightness);
     }
     
@@ -274,7 +284,7 @@ void DisplayService::setBrightness(uint8_t brightness, bool immediate) {
 }
 
 uint8_t DisplayService::getBrightness() const {
-    return target_brightness_;
+    return active_brightness_;
 }
 
 void DisplayService::setTargetBrightness(uint8_t brightness) {
@@ -282,7 +292,10 @@ void DisplayService::setTargetBrightness(uint8_t brightness) {
     
     if (mutex_) {
         xSemaphoreTake(mutex_, portMAX_DELAY);
-        target_brightness_ = brightness;
+        active_brightness_ = brightness;
+        if (!dimmed_) {
+            target_brightness_ = brightness;
+        }
         xSemaphoreGive(mutex_);
     }
 }
@@ -305,6 +318,25 @@ void DisplayService::updateBrightness() {
     }
     
     applyBrightness(current_brightness_);
+}
+
+uint8_t DisplayService::getIdleBrightness() const {
+    return idle_brightness_;
+}
+
+void DisplayService::setIdleBrightness(uint8_t brightness) {
+    brightness = brightness > 100 ? 100 : brightness;
+    
+    if (mutex_) {
+        xSemaphoreTake(mutex_, portMAX_DELAY);
+        idle_brightness_ = brightness;
+        if (dimmed_) {
+            target_brightness_ = idle_brightness_;
+        }
+        xSemaphoreGive(mutex_);
+    }
+    
+    SettingsStore::instance().setIdleBrightness(brightness);
 }
 
 // ============================================================================

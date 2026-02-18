@@ -19,10 +19,6 @@ bool StatusBar::create(lv_obj_t* parent) {
     lv_obj_set_height(container_, height());
     
     // Style the container
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0x0C101B), LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_color(container_, lv_color_hex(0x141C2B), LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_dir(container_, LV_GRAD_DIR_VER, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(container_, LV_OPA_70, LV_PART_MAIN);
     lv_obj_set_style_radius(container_, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(container_, 0, LV_PART_MAIN);
     lv_obj_set_style_shadow_width(container_, 0, LV_PART_MAIN);
@@ -43,6 +39,8 @@ bool StatusBar::create(lv_obj_t* parent) {
     createBackButton();
     createTimeLabel();
     createStatusIcons();
+
+    applyTheme(settings::currentThemeColors());
     
     return true;
 }
@@ -70,7 +68,6 @@ void StatusBar::createBackButton() {
 
     lv_obj_t* label = lv_label_create(back_button_);
     lv_label_set_text(label, LV_SYMBOL_LEFT " Back");
-    lv_obj_set_style_text_color(label, lv_color_hex(0xE6EDF7), LV_PART_MAIN);
     lv_obj_set_style_text_font(label, &lv_font_roboto_14, LV_PART_MAIN);
     lv_obj_center(label);
 
@@ -111,7 +108,6 @@ void StatusBar::createTimeLabel() {
     lv_obj_align(time_label_, LV_ALIGN_TOP_MID, 0, 6);  // 6px from top of status bar
     
     // Style
-    lv_obj_set_style_text_color(time_label_, lv_color_hex(0xE6EDF7), LV_PART_MAIN);
     lv_obj_set_style_text_font(time_label_, &lv_font_roboto_14, LV_PART_MAIN);
     lv_obj_set_style_text_letter_space(time_label_, 2, LV_PART_MAIN);
     lv_obj_set_style_text_align(time_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -141,13 +137,11 @@ void StatusBar::createStatusIcons() {
     
     // WiFi label
     wifi_label_ = lv_label_create(status_right_box_);
-    lv_obj_set_style_text_color(wifi_label_, lv_color_hex(0xE6EDF7), LV_PART_MAIN);
     lv_obj_set_style_text_font(wifi_label_, &lv_font_roboto_14, LV_PART_MAIN);
     lv_label_set_text(wifi_label_, LV_SYMBOL_WIFI);
     
     // Battery label
     battery_label_ = lv_label_create(status_right_box_);
-    lv_obj_set_style_text_color(battery_label_, lv_color_hex(0xE6EDF7), LV_PART_MAIN);
     lv_obj_set_style_text_font(battery_label_, &lv_font_roboto_14, LV_PART_MAIN);
     setBatteryLevel(100, false);
 }
@@ -194,6 +188,31 @@ void StatusBar::refresh(uint32_t now_ms) {
     updateTime(now_ms);
     setWiFiConnected(wifi_connected_);
     setBatteryLevel(battery_level_, charging_);
+}
+
+void StatusBar::applyTheme(const settings::ThemeColors& theme) {
+    if (!container_) return;
+
+    lv_obj_set_style_bg_color(container_, theme.status_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(container_, LV_GRAD_DIR_NONE, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_color(container_, theme.status_bg, LV_PART_MAIN);
+
+    if (time_label_) {
+        lv_obj_set_style_text_color(time_label_, theme.status_fg, LV_PART_MAIN);
+    }
+    if (wifi_label_) {
+        lv_obj_set_style_text_color(wifi_label_, theme.status_fg, LV_PART_MAIN);
+    }
+    if (battery_label_) {
+        lv_obj_set_style_text_color(battery_label_, theme.status_fg, LV_PART_MAIN);
+    }
+    if (back_button_) {
+        lv_obj_t* label = lv_obj_get_child(back_button_, 0);
+        if (label) {
+            lv_obj_set_style_text_color(label, theme.status_fg, LV_PART_MAIN);
+        }
+    }
 }
 
 } // namespace ui

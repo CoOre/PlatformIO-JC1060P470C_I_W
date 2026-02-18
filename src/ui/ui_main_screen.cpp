@@ -46,8 +46,6 @@ void MainScreen::setupContainer(lv_obj_t* parent) {
     lv_obj_set_style_pad_ver(container_, 0, LV_PART_MAIN);
     lv_obj_set_style_margin_all(container_, 0, LV_PART_MAIN);
 
-    // Style
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
     lv_obj_set_style_radius(container_, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(container_, 0, LV_PART_MAIN);
@@ -318,6 +316,19 @@ void MainScreen::update(uint32_t now_ms) {
 
 void MainScreen::setOnAppLaunch(std::function<void()> callback) {
     on_app_launch_ = callback;
+}
+
+void MainScreen::applyTheme(const settings::ThemeColors& theme) {
+    if (container_) {
+        lv_obj_set_style_bg_color(container_, theme.screen_bg, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    }
+    if (launcher_) {
+        launcher_->applyTheme(theme);
+    }
+    if (settings_app_ && settings_app_->isActive()) {
+        settings_app_->applyTheme();
+    }
 }
 
 } // namespace ui

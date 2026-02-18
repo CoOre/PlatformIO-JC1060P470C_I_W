@@ -15,6 +15,13 @@ bool LanguageScreen::create(lv_obj_t* parent) {
     if (!parent) return false;
     
     setupContainer(parent);
+    theme_ = currentThemeColors();
+    lv_obj_set_style_bg_color(container_, theme_.screen_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(container_, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(container_, 12, LV_PART_MAIN);
+    lv_obj_set_scroll_dir(container_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_AUTO);
     
     createHeader();
     createLanguageSection();
@@ -39,30 +46,55 @@ void LanguageScreen::destroy() {
 
 void LanguageScreen::createHeader() {
     header_ = lv_obj_create(container_);
-    lv_obj_set_size(header_, LV_PCT(100), 50);
-    lv_obj_set_style_pad_all(header_, 10, LV_PART_MAIN);
-    lv_obj_set_style_border_width(header_, 0, LV_PART_MAIN);
+    lv_obj_set_size(header_, LV_PCT(100), 56);
+    lv_obj_set_style_bg_color(header_, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(header_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(header_, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(header_, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(header_, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(header_, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(header_, 0, LV_PART_MAIN);
+    lv_obj_set_layout(header_, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(header_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
     
     lv_obj_t* title = lv_label_create(header_);
     lv_label_set_text(title, S(LANGUAGE_TITLE));
     lv_obj_set_style_text_font(title, &lv_font_roboto_18, LV_PART_MAIN);
-    lv_obj_center(title);
+    lv_obj_set_style_text_color(title, theme_.title, LV_PART_MAIN);
 }
 
 void LanguageScreen::createLanguageSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 15, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 10, LV_PART_MAIN);
     
-    // Label
-    lv_obj_t* label = lv_label_create(section);
+    lv_obj_t* row = lv_obj_create(section);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
+    lv_obj_set_layout(row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    
+    lv_obj_t* label = lv_label_create(row);
     lv_label_set_text(label, S(LANGUAGE_SELECT));
-    lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_text_font(label, &lv_font_roboto_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(label, theme_.title, LV_PART_MAIN);
     
-    // Dropdown
-    lang_dropdown_ = lv_dropdown_create(section);
+    lang_dropdown_ = lv_dropdown_create(row);
     lv_obj_set_size(lang_dropdown_, 250, 40);
-    lv_obj_align(lang_dropdown_, LV_ALIGN_TOP_LEFT, 0, 30);
     
     // Build options
     char options[64] = {};
@@ -82,20 +114,35 @@ void LanguageScreen::createLanguageSection() {
 void LanguageScreen::createFormatSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 15, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
     
-    // Label
-    lv_obj_t* label = lv_label_create(section);
-    lv_label_set_text(label, S(TIME_TIME));
-    lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t* title = lv_label_create(section);
+    lv_label_set_text(title, S(TIME_TIME));
+    lv_obj_set_style_text_font(title, &lv_font_roboto_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, theme_.title, LV_PART_MAIN);
     
-    // 24h switch
-    lv_obj_t* switch_label = lv_label_create(section);
-    lv_label_set_text(switch_label, S(LANGUAGE_FORMAT_24H));
-    lv_obj_align(switch_label, LV_ALIGN_TOP_LEFT, 0, 40);
+    lv_obj_t* row = lv_obj_create(section);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
+    lv_obj_set_layout(row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
-    format_switch_ = lv_switch_create(section);
-    lv_obj_align(format_switch_, LV_ALIGN_TOP_RIGHT, 0, 40);
+    lv_obj_t* label = lv_label_create(row);
+    lv_label_set_text(label, S(LANGUAGE_FORMAT_24H));
+    lv_obj_set_style_text_color(label, theme_.muted, LV_PART_MAIN);
+    
+    format_switch_ = lv_switch_create(row);
     
     if (SettingsStore::instance().getFormat24h()) {
         lv_obj_add_state(format_switch_, LV_STATE_CHECKED);

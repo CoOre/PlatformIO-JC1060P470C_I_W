@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../navigation/ui_router.h"
+#include "../core/theme.h"
 
 namespace settings {
 
@@ -50,6 +51,7 @@ private:
     void (*confirm_callback_)() = nullptr;
     
     bool showing_confirm_ = false;
+    ThemeColors theme_;
 };
 
 } // namespace settings

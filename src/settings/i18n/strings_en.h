@@ -60,6 +60,7 @@ static const char* const STRINGS_EN[static_cast<size_t>(StringID::COUNT)] = {
     // Display
     [static_cast<size_t>(StringID::DISPLAY_TITLE)] = "Display",
     [static_cast<size_t>(StringID::DISPLAY_BRIGHTNESS)] = "Brightness",
+    [static_cast<size_t>(StringID::DISPLAY_IDLE_BRIGHTNESS)] = "Idle brightness",
     [static_cast<size_t>(StringID::DISPLAY_TIMEOUT)] = "Backlight timeout",
     [static_cast<size_t>(StringID::DISPLAY_TIMEOUT_15S)] = "15 sec",
     [static_cast<size_t>(StringID::DISPLAY_TIMEOUT_30S)] = "30 sec",
@@ -71,6 +72,9 @@ static const char* const STRINGS_EN[static_cast<size_t>(StringID::COUNT)] = {
     [static_cast<size_t>(StringID::DISPLAY_ROTATION_90)] = "90\xc2\xb0",
     [static_cast<size_t>(StringID::DISPLAY_ROTATION_180)] = "180\xc2\xb0",
     [static_cast<size_t>(StringID::DISPLAY_ROTATION_270)] = "270\xc2\xb0",
+    [static_cast<size_t>(StringID::DISPLAY_THEME)] = "Theme",
+    [static_cast<size_t>(StringID::DISPLAY_THEME_LIGHT)] = "Light",
+    [static_cast<size_t>(StringID::DISPLAY_THEME_DARK)] = "Dark",
     
     // Time
     [static_cast<size_t>(StringID::TIME_TITLE)] = "Time",

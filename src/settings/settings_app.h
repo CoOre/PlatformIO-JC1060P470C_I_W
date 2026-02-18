@@ -59,6 +59,11 @@ public:
      */
     bool handleBack();
 
+    /**
+     * @brief Apply current theme to settings UI
+     */
+    void applyTheme();
+
 private:
     void setupContainer(lv_obj_t* parent);
     

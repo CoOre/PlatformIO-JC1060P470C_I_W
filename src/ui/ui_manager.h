@@ -61,6 +61,11 @@ public:
      */
     void goBackToLauncher();
 
+    /**
+     * @brief Apply current theme to UI
+     */
+    void applyTheme();
+
 private:
     UIManager() = default;
     ~UIManager() = default;
@@ -69,6 +74,7 @@ private:
 
     StatusBar* status_bar_ = nullptr;
     MainScreen* main_screen_ = nullptr;
+    lv_obj_t* main_page_ = nullptr;
 
     lv_obj_t* fps_label_ = nullptr;
     bool touch_active_ = false;

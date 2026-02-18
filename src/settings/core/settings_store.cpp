@@ -355,6 +355,25 @@ void SettingsStore::setBrightness(uint8_t brightness) {
     SettingsPersistence::instance().markModified();
 }
 
+uint8_t SettingsStore::getIdleBrightness() const {
+    lock();
+    uint8_t val = data_.display.idle_brightness;
+    unlock();
+    return val;
+}
+
+void SettingsStore::setIdleBrightness(uint8_t brightness) {
+    brightness = brightness > 100 ? 100 : brightness;
+    
+    lock();
+    if (data_.display.idle_brightness != brightness) {
+        data_.display.idle_brightness = brightness;
+        modified_ = true;
+    }
+    unlock();
+    SettingsPersistence::instance().markModified();
+}
+
 uint32_t SettingsStore::getDisplayTimeoutMs() const {
     lock();
     uint32_t val = data_.display.timeout_ms;
@@ -386,6 +405,23 @@ void SettingsStore::setRotation(uint8_t rotation) {
     lock();
     if (data_.display.rotation != rotation) {
         data_.display.rotation = rotation;
+        modified_ = true;
+    }
+    unlock();
+    SettingsPersistence::instance().markModified();
+}
+
+ThemeMode SettingsStore::getTheme() const {
+    lock();
+    ThemeMode val = data_.display.theme;
+    unlock();
+    return val;
+}
+
+void SettingsStore::setTheme(ThemeMode theme) {
+    lock();
+    if (data_.display.theme != theme) {
+        data_.display.theme = theme;
         modified_ = true;
     }
     unlock();

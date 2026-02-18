@@ -15,6 +15,13 @@ bool WiFiScreen::create(lv_obj_t* parent) {
     if (!parent) return false;
     
     setupContainer(parent);
+    theme_ = currentThemeColors();
+    lv_obj_set_style_bg_color(container_, theme_.screen_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(container_, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(container_, 12, LV_PART_MAIN);
+    lv_obj_set_scroll_dir(container_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_AUTO);
     
     createHeader();
     createStatusSection();
@@ -38,6 +45,11 @@ void WiFiScreen::destroy() {
     // Unregister from WiFi events
     WiFiService::instance().setUIEventObject(nullptr);
     
+    if (password_dialog_) {
+        lv_obj_del(password_dialog_);
+        password_dialog_ = nullptr;
+    }
+
     if (container_) {
         lv_obj_del(container_);
         container_ = nullptr;
@@ -64,45 +76,59 @@ bool WiFiScreen::onBack() {
 
 void WiFiScreen::createHeader() {
     header_ = lv_obj_create(container_);
-    lv_obj_set_size(header_, LV_PCT(100), 50);
-    lv_obj_set_style_pad_all(header_, 10, LV_PART_MAIN);
-    lv_obj_set_style_border_width(header_, 0, LV_PART_MAIN);
+    lv_obj_set_size(header_, LV_PCT(100), 56);
+    lv_obj_set_style_bg_color(header_, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(header_, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(header_, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(header_, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(header_, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(header_, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(header_, 0, LV_PART_MAIN);
+    lv_obj_set_layout(header_, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(header_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
     
     lv_obj_t* title = lv_label_create(header_);
     lv_label_set_text(title, S(WIFI_TITLE));
     lv_obj_set_style_text_font(title, &lv_font_roboto_18, LV_PART_MAIN);
-    lv_obj_center(title);
+    lv_obj_set_style_text_color(title, theme_.title, LV_PART_MAIN);
 }
 
 void WiFiScreen::createStatusSection() {
     lv_obj_t* section = lv_obj_create(container_);
     lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(section, 10, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 6, LV_PART_MAIN);
     
-    // Status
     status_label_ = lv_label_create(section);
     lv_label_set_text(status_label_, S(WIFI_DISCONNECTED));
-    lv_obj_align(status_label_, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_text_font(status_label_, &lv_font_roboto_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label_, theme_.title, LV_PART_MAIN);
     
-    // SSID
     ssid_label_ = lv_label_create(section);
     lv_label_set_text(ssid_label_, "");
-    lv_obj_align(ssid_label_, LV_ALIGN_TOP_LEFT, 0, 25);
+    lv_obj_set_style_text_color(ssid_label_, theme_.muted, LV_PART_MAIN);
     
-    // IP
     ip_label_ = lv_label_create(section);
     lv_label_set_text(ip_label_, "");
-    lv_obj_align(ip_label_, LV_ALIGN_TOP_LEFT, 0, 50);
+    lv_obj_set_style_text_color(ip_label_, theme_.muted, LV_PART_MAIN);
     
-    // RSSI
     rssi_label_ = lv_label_create(section);
     lv_label_set_text(rssi_label_, "");
-    lv_obj_align(rssi_label_, LV_ALIGN_TOP_LEFT, 0, 75);
+    lv_obj_set_style_text_color(rssi_label_, theme_.muted, LV_PART_MAIN);
     
-    // Disconnect button (hidden by default)
     lv_obj_t* disconnect_btn = lv_btn_create(section);
-    lv_obj_set_size(disconnect_btn, 120, 40);
-    lv_obj_align(disconnect_btn, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_set_size(disconnect_btn, 140, 40);
+    lv_obj_set_style_bg_color(disconnect_btn, theme_.accent_soft, LV_PART_MAIN);
+    lv_obj_set_style_radius(disconnect_btn, 10, LV_PART_MAIN);
     lv_obj_add_flag(disconnect_btn, LV_OBJ_FLAG_HIDDEN);
     
     lv_obj_t* btn_label = lv_label_create(disconnect_btn);
@@ -115,10 +141,37 @@ void WiFiScreen::createStatusSection() {
 }
 
 void WiFiScreen::createNetworksList() {
-    // Scan button
-    scan_btn_ = lv_btn_create(container_);
-    lv_obj_set_size(scan_btn_, LV_PCT(100), 50);
-    lv_obj_set_style_bg_color(scan_btn_, lv_color_hex(0x2196F3), LV_PART_MAIN);
+    lv_obj_t* section = lv_obj_create(container_);
+    lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 10, LV_PART_MAIN);
+    
+    lv_obj_t* header = lv_obj_create(section);
+    lv_obj_set_size(header, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(header, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(header, 0, LV_PART_MAIN);
+    lv_obj_set_layout(header, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    
+    lv_obj_t* title = lv_label_create(header);
+    lv_label_set_text(title, S(WIFI_SCAN));
+    lv_obj_set_style_text_font(title, &lv_font_roboto_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, theme_.title, LV_PART_MAIN);
+    
+    scan_btn_ = lv_btn_create(header);
+    lv_obj_set_size(scan_btn_, 140, 40);
+    lv_obj_set_style_bg_color(scan_btn_, theme_.accent, LV_PART_MAIN);
+    lv_obj_set_style_radius(scan_btn_, 10, LV_PART_MAIN);
     
     lv_obj_t* btn_label = lv_label_create(scan_btn_);
     lv_label_set_text(btn_label, S(WIFI_SCAN));
@@ -126,89 +179,122 @@ void WiFiScreen::createNetworksList() {
     
     lv_obj_add_event_cb(scan_btn_, onScanClicked, LV_EVENT_CLICKED, this);
     
-    // Networks list
-    networks_list_ = lv_list_create(container_);
-    lv_obj_set_size(networks_list_, LV_PCT(100), 200);
+    networks_list_ = lv_list_create(section);
+    lv_obj_set_size(networks_list_, LV_PCT(100), 220);
     lv_obj_set_style_border_width(networks_list_, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(networks_list_, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_radius(networks_list_, 10, LV_PART_MAIN);
     
-    // Placeholder label
     lv_obj_t* placeholder = lv_label_create(networks_list_);
     lv_label_set_text(placeholder, S(WIFI_NO_NETWORKS));
 }
 
 void WiFiScreen::createSavedNetworksSection() {
-    lv_obj_t* label = lv_label_create(container_);
-    lv_label_set_text(label, S(WIFI_SAVED_NETWORKS));
-    lv_obj_set_style_text_font(label, &lv_font_roboto_14, LV_PART_MAIN);
+    lv_obj_t* section = lv_obj_create(container_);
+    lv_obj_set_size(section, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(section, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(section, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(section, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(section, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(section, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(section, 16, LV_PART_MAIN);
+    lv_obj_set_layout(section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(section, 10, LV_PART_MAIN);
     
-    saved_list_ = lv_list_create(container_);
-    lv_obj_set_size(saved_list_, LV_PCT(100), 150);
+    lv_obj_t* label = lv_label_create(section);
+    lv_label_set_text(label, S(WIFI_SAVED_NETWORKS));
+    lv_obj_set_style_text_font(label, &lv_font_roboto_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(label, theme_.title, LV_PART_MAIN);
+    
+    saved_list_ = lv_list_create(section);
+    lv_obj_set_size(saved_list_, LV_PCT(100), 170);
     lv_obj_set_style_border_width(saved_list_, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(saved_list_, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_radius(saved_list_, 10, LV_PART_MAIN);
 }
 
 void WiFiScreen::createPasswordDialog() {
-    password_dialog_ = lv_obj_create(container_);
+    lv_obj_t* top_layer = lv_layer_top();
+    password_dialog_ = lv_obj_create(top_layer);
     lv_obj_set_size(password_dialog_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(password_dialog_, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_pos(password_dialog_, 0, 0);
+    lv_obj_set_style_bg_color(password_dialog_, theme_.overlay, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(password_dialog_, theme_.overlay_opa, LV_PART_MAIN);
+    lv_obj_set_style_border_width(password_dialog_, 0, LV_PART_MAIN);
     lv_obj_add_flag(password_dialog_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(password_dialog_, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Title
-    lv_obj_t* title = lv_label_create(password_dialog_);
+    lv_obj_t* card = lv_obj_create(password_dialog_);
+    lv_obj_set_size(card, 560, 320);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, theme_.card_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(card, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(card, 16, LV_PART_MAIN);
+    lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(card, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(card, 20, LV_PART_MAIN);
+    lv_obj_set_layout(card, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(card, 12, LV_PART_MAIN);
+    
+    lv_obj_t* title = lv_label_create(card);
     lv_label_set_text(title, S(WIFI_ENTER_PASSWORD));
     lv_obj_set_style_text_font(title, &lv_font_roboto_18, LV_PART_MAIN);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_text_color(title, theme_.title, LV_PART_MAIN);
     
-    // SSID label
-    lv_obj_t* ssid_lbl = lv_label_create(password_dialog_);
-    lv_label_set_text(ssid_lbl, "");
-    lv_obj_set_user_data(ssid_lbl, this);
-    lv_obj_align(ssid_lbl, LV_ALIGN_TOP_MID, 0, 50);
+    password_ssid_label_ = lv_label_create(card);
+    lv_label_set_text(password_ssid_label_, "");
+    lv_obj_set_style_text_color(password_ssid_label_, theme_.muted, LV_PART_MAIN);
     
-    // Password textarea
-    password_ta_ = lv_textarea_create(password_dialog_);
-    lv_obj_set_size(password_ta_, 300, 50);
-    lv_obj_align(password_ta_, LV_ALIGN_TOP_MID, 0, 80);
+    password_ta_ = lv_textarea_create(card);
+    lv_obj_set_size(password_ta_, LV_PCT(100), 44);
+    lv_obj_set_style_border_color(password_ta_, theme_.card_border, LV_PART_MAIN);
+    lv_obj_set_style_border_width(password_ta_, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(password_ta_, 10, LV_PART_MAIN);
     lv_textarea_set_password_mode(password_ta_, true);
     lv_textarea_set_placeholder_text(password_ta_, S(WIFI_PASSWORD));
     
-    // Show password checkbox
-    lv_obj_t* show_cb = lv_checkbox_create(password_dialog_);
+    lv_obj_t* show_cb = lv_checkbox_create(card);
     lv_checkbox_set_text(show_cb, S(WIFI_SHOW_PASSWORD));
-    lv_obj_align(show_cb, LV_ALIGN_TOP_MID, 0, 140);
     
     lv_obj_add_event_cb(show_cb, [](lv_event_t* e) {
         lv_obj_t* cb = static_cast<lv_obj_t*>(lv_event_get_target_obj(e));
-        WiFiScreen* screen = static_cast<WiFiScreen*>(lv_obj_get_user_data(cb));
+        WiFiScreen* screen = static_cast<WiFiScreen*>(lv_event_get_user_data(e));
         lv_state_t state = lv_obj_get_state(cb);
         bool checked = (state & LV_STATE_CHECKED);
-        lv_textarea_set_password_mode(screen->password_ta_, !checked);
+        if (screen && screen->password_ta_) {
+            lv_textarea_set_password_mode(screen->password_ta_, !checked);
+        }
     }, LV_EVENT_VALUE_CHANGED, this);
     
-    // Buttons
-    lv_obj_t* btn_container = lv_obj_create(password_dialog_);
-    lv_obj_set_size(btn_container, 300, 50);
-    lv_obj_align(btn_container, LV_ALIGN_TOP_MID, 0, 180);
+    lv_obj_t* btn_container = lv_obj_create(card);
+    lv_obj_set_size(btn_container, LV_PCT(100), 46);
     lv_obj_set_flex_flow(btn_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(btn_container, 20, LV_PART_MAIN);
     lv_obj_set_style_border_width(btn_container, 0, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(btn_container, LV_OPA_TRANSP, LV_PART_MAIN);
     
     lv_obj_t* cancel_btn = lv_btn_create(btn_container);
-    lv_obj_set_size(cancel_btn, 130, 40);
+    lv_obj_set_size(cancel_btn, 200, 40);
+    lv_obj_set_style_bg_color(cancel_btn, theme_.accent_soft, LV_PART_MAIN);
+    lv_obj_set_style_radius(cancel_btn, 10, LV_PART_MAIN);
     lv_obj_t* cancel_lbl = lv_label_create(cancel_btn);
     lv_label_set_text(cancel_lbl, S(CANCEL));
+    lv_obj_set_style_text_color(cancel_lbl, theme_.title, LV_PART_MAIN);
     lv_obj_center(cancel_lbl);
     lv_obj_add_event_cb(cancel_btn, onPasswordCancelClicked, LV_EVENT_CLICKED, this);
     
     lv_obj_t* connect_btn = lv_btn_create(btn_container);
-    lv_obj_set_size(connect_btn, 130, 40);
-    lv_obj_set_style_bg_color(connect_btn, lv_color_hex(0x4CAF50), LV_PART_MAIN);
+    lv_obj_set_size(connect_btn, 200, 40);
+    lv_obj_set_style_bg_color(connect_btn, theme_.accent, LV_PART_MAIN);
+    lv_obj_set_style_radius(connect_btn, 10, LV_PART_MAIN);
     lv_obj_t* connect_lbl = lv_label_create(connect_btn);
     lv_label_set_text(connect_lbl, S(CONNECT));
+    lv_obj_set_style_text_color(connect_lbl, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
     lv_obj_center(connect_lbl);
     lv_obj_add_event_cb(connect_btn, onPasswordConfirmClicked, LV_EVENT_CLICKED, this);
     
-    // Keyboard
     password_kb_ = lv_keyboard_create(password_dialog_);
     lv_obj_set_size(password_kb_, LV_PCT(100), 200);
     lv_obj_align(password_kb_, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -313,14 +399,15 @@ void WiFiScreen::showPasswordDialog(const char* ssid) {
     strncpy(pending_ssid_, ssid, sizeof(pending_ssid_) - 1);
     pending_ssid_[sizeof(pending_ssid_) - 1] = '\0';
     
-    // Update SSID label in dialog
-    lv_obj_t* ssid_lbl = lv_obj_get_child(password_dialog_, 1);
-    lv_label_set_text_fmt(ssid_lbl, "%s: %s", S(WIFI_SSID), ssid);
+    if (password_ssid_label_) {
+        lv_label_set_text_fmt(password_ssid_label_, "%s: %s", S(WIFI_SSID), ssid);
+    }
     
     // Clear password
     lv_textarea_set_text(password_ta_, "");
     
     lv_obj_clear_flag(password_dialog_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(password_dialog_);
     showing_password_dialog_ = true;
 }
 

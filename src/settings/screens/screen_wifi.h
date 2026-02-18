@@ -2,6 +2,7 @@
 
 #include "../navigation/ui_router.h"
 #include "../services/wifi_service.h"
+#include "../core/theme.h"
 #include <array>
 
 namespace settings {
@@ -67,9 +68,11 @@ private:
     
     // Password dialog
     lv_obj_t* password_dialog_ = nullptr;
+    lv_obj_t* password_ssid_label_ = nullptr;
     lv_obj_t* password_ta_ = nullptr;
     lv_obj_t* password_kb_ = nullptr;
     char pending_ssid_[WIFI_SSID_MAX_LEN + 1] = {};
+    ThemeColors theme_;
     
     // State
     std::array<WiFiAPInfo, WIFI_SCAN_MAX_AP> scan_results_;
