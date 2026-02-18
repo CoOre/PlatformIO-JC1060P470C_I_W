@@ -105,7 +105,7 @@ void BoxTestApp::createBoxes() {
         lv_label_set_text_fmt(label, "#%02u", static_cast<unsigned>(i));
         lv_obj_center(label);
         lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(label, &lv_font_roboto_14, LV_PART_MAIN);
     }
 }
 

@@ -1,9 +1,11 @@
 #pragma once
 
-#include "lvgl.h"
 #include <cstdint>
 #include <functional>
 #include <vector>
+
+#include "lvgl.h"
+#include "settings/i18n/i18n.h"
 
 namespace ui {
 
@@ -12,6 +14,7 @@ namespace ui {
  */
 struct AppInfo {
     const char* name;
+    settings::StringID name_id = settings::StringID::COUNT;
     const lv_img_dsc_t* icon;
     uint32_t color;
     std::function<void()> onLaunch;
@@ -54,12 +57,18 @@ public:
 
 private:
     void createGrid();
+    const char* getAppDisplayName(const AppInfo& app) const;
+    void refreshLabels();
     void onAppClicked(lv_event_t* e);
     static void appClickHandler(lv_event_t* e);
 
     lv_obj_t* container_ = nullptr;
     lv_obj_t* grid_ = nullptr;
-    std::vector<AppInfo> apps_;
+    struct AppEntry {
+        AppInfo info;
+        lv_obj_t* label = nullptr;
+    };
+    std::vector<AppEntry> apps_;
     std::function<void(const AppInfo&)> on_app_launch_;
     bool visible_ = false;
 

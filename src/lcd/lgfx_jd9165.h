@@ -175,10 +175,13 @@ inline LGFX_JD9165::LGFX_JD9165()
     tcfg.pin_rst = TP_RST;
     tcfg.pin_int = TP_INT;
     tcfg.freq = 100000;
-    tcfg.x_min = 0;
-    tcfg.x_max = LCD_H_RES - 1;
-    tcfg.y_min = 0;
-    tcfg.y_max = LCD_V_RES - 1;
+    // Калибровка тачскрина на основе измерений:
+    // ЛВ=(28, 11), ПВ=(797, 15), ПН=(774, 468), ЛН=(45, 472)
+    // Экран 1024x600
+    tcfg.x_min = 0;     // Минимальное сырое значение X (левый край)
+    tcfg.x_max = 800;    // Максимальное сырое значение X (правый край)
+    tcfg.y_min = 0;     // Минимальное сырое значение Y (верхний край)
+    tcfg.y_max = 480;    // Максимальное сырое значение Y (нижний край)
     tcfg.bus_shared = true;
     _touch.config(tcfg);
     _panel.setTouch(&_touch);

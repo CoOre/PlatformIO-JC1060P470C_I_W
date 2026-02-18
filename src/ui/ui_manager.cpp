@@ -1,6 +1,8 @@
 #include "ui_manager.h"
 #include "ui_status_bar.h"
 #include "ui_main_screen.h"
+#include "../settings/services/wifi_service.h"
+#include "../settings/services/time_service.h"
 
 namespace ui {
 
@@ -54,12 +56,41 @@ bool UIManager::init() {
 
     // Set up back button callback
     status_bar_->setBackButtonCallback([this]() {
+        if (main_screen_ && main_screen_->handleBackInSettings()) {
+            if (main_screen_->isInLauncher() && status_bar_) {
+                status_bar_->setBackButtonVisible(false);
+            }
+            return;
+        }
         goBackToLauncher();
     });
 
     // Set up app launch callback to show back button
     main_screen_->setOnAppLaunch([this]() {
         status_bar_->setBackButtonVisible(true);
+    });
+
+    // Register WiFi event callback to update status bar and trigger NTP sync
+    settings::WiFiService::instance().setEventCallback([this](const settings::WiFiEventData& evt) {
+        if (!status_bar_) return;
+        
+        switch (evt.event) {
+            case settings::WiFiEvent::CONNECTED:
+            case settings::WiFiEvent::IP_ASSIGNED:
+                status_bar_->setWiFiConnected(true);
+                break;
+            case settings::WiFiEvent::DISCONNECTED:
+            case settings::WiFiEvent::CONNECTION_FAILED:
+                status_bar_->setWiFiConnected(false);
+                break;
+            default:
+                break;
+        }
+        
+        // Trigger NTP sync when WiFi is connected and IP is assigned
+        if (evt.event == settings::WiFiEvent::IP_ASSIGNED) {
+            settings::TimeService::instance().requestNtpSyncOnConnect();
+        }
     });
 
     // Create FPS label (on top layer)
@@ -73,7 +104,7 @@ void UIManager::createFPSLabel() {
     fps_label_ = lv_label_create(lv_layer_top());
     lv_obj_set_pos(fps_label_, 10, StatusBar::height() + 10);
     lv_obj_set_style_text_color(fps_label_, lv_color_hex(0x00FF00), LV_PART_MAIN);
-    lv_obj_set_style_text_font(fps_label_, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(fps_label_, &lv_font_roboto_14, LV_PART_MAIN);
     lv_label_set_text(fps_label_, "FPS: --");
 }
 

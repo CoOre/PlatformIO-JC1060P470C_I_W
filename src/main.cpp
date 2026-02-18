@@ -10,6 +10,9 @@
 #include "freertos/semphr.h"
 #include "driver/i2c_master.h"
 #include "ui/ui_manager.h"
+#include "settings/settings_app.h"
+#include "settings/core/settings_store.h"
+#include "settings/services/display_service.h"
 
 static_assert(LV_COLOR_DEPTH == 16, "LV_COLOR_DEPTH must be 16 for RGB565 panel");
 
@@ -22,6 +25,13 @@ static constexpr uint32_t DRAW_BUF_LINES = 100; // 100*1024*2 = 205KB - fits in 
 static SemaphoreHandle_t vsync_sem = nullptr;
 
 static lv_indev_t *touch_indev = nullptr;
+
+// Current display rotation (0=0°, 1=90°, 2=180°, 3=270°)
+static uint8_t current_rotation = 0;
+
+// Display resolution (swapped based on rotation)
+static uint32_t display_hor_res = LCD_H_RES;
+static uint32_t display_ver_res = LCD_V_RES;
 
 // FPS counter
 static uint32_t fps_frame_count = 0;
@@ -39,10 +49,57 @@ static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *co
     const size_t bytes = (w <= 0 || h <= 0) ? 0u : static_cast<size_t>(w) * static_cast<size_t>(h) * pixel_size;
     
     lcd.startWrite();
+    
+    // Handle rotation for display flush
+    // LVGL handles the rotation internally, we just need to push the image
     lcd.pushImage(offsetx1, offsety1, w, h, reinterpret_cast<const lgfx::rgb565_t *>(color_map));
+    
     lcd.endWrite();
     
     lv_display_flush_ready(disp);
+}
+
+/**
+ * @brief Apply display and touch rotation
+ * @param rotation 0=0°, 1=90°, 2=180°, 3=270°
+ */
+static void applyDisplayRotation(uint8_t rotation)
+{
+    if (!disp_drv) return;
+    
+    rotation = rotation % 4;
+    current_rotation = rotation;
+    
+    // Apply LovyanGFX rotation
+    lcd.setRotation(rotation);
+    
+    // Update display dimensions based on rotation
+    if (rotation == 1 || rotation == 3) {
+        // 90° or 270° - swap dimensions
+        display_hor_res = LCD_V_RES;
+        display_ver_res = LCD_H_RES;
+    } else {
+        // 0° or 180° - normal dimensions
+        display_hor_res = LCD_H_RES;
+        display_ver_res = LCD_V_RES;
+    }
+
+    // Keep LVGL rotation at 0 and just update the logical resolution.
+    // LVGL rotates input based on display rotation, so avoid double-rotation.
+    lv_display_set_rotation(disp_drv, LV_DISPLAY_ROTATION_0);
+    lv_display_set_resolution(disp_drv,
+                              static_cast<int32_t>(display_hor_res),
+                              static_cast<int32_t>(display_ver_res));
+    
+    ESP_LOGI("MAIN", "Display rotation set to %d (%d\xc2\xb0)", rotation, rotation * 90);
+}
+
+/**
+ * @brief Get the current display rotation
+ */
+static uint8_t getDisplayRotation()
+{
+    return current_rotation;
 }
 
 static bool on_dpi_refresh_done(esp_lcd_panel_handle_t panel,
@@ -72,12 +129,83 @@ static void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data)
     // Update UI manager with touch state
     ui::UIManager::instance().setTouchActive(touched);
 
+    // Debug: log touch coordinates (throttled)
+    static uint32_t last_debug_time = 0;
+    static uint16_t last_touchX = 0xFFFF;
+    static uint16_t last_touchY = 0xFFFF;
+    uint32_t now = millis();
+    if (touched && (now - last_debug_time > 200 || touchX != last_touchX || touchY != last_touchY)) {
+        // Serial0.printf("Touch: raw=(%u, %u)\r\n", touchX, touchY);
+        last_debug_time = now;
+        last_touchX = touchX;
+        last_touchY = touchY;
+    }
+
     if (!touched) {
         data->state = LV_INDEV_STATE_REL;
     } else {
         data->state = LV_INDEV_STATE_PR;
-        data->point.x = touchX;
-        data->point.y = touchY;
+        // LovyanGFX already applies rotation in getTouch() when lcd.setRotation() is used.
+        // Avoid double-rotating here; just clamp to the current display bounds.
+        uint16_t finalX = touchX;
+        uint16_t finalY = touchY;
+        uint32_t hor_res = display_hor_res;
+        uint32_t ver_res = display_ver_res;
+
+        if (finalX >= hor_res) finalX = hor_res - 1;
+        if (finalY >= ver_res) finalY = ver_res - 1;
+
+        data->point.x = finalX;
+        data->point.y = finalY;
+        
+        #if 0
+        // Apply touch coordinate transformation based on rotation
+        // LovyanGFX getTouch returns coordinates in the panel's native orientation
+        // We need to transform them to match LVGL's rotated coordinate system
+        uint16_t finalX = touchX;
+        uint16_t finalY = touchY;
+        
+        // Get current display dimensions
+        uint32_t hor_res = display_hor_res;
+        uint32_t ver_res = display_ver_res;
+        
+        // Transform coordinates based on rotation
+        // Native panel is 1024x600 (LCD_H_RES x LCD_V_RES)
+        switch (current_rotation) {
+            case 0: // 0° - native orientation
+                // No transformation needed
+                finalX = touchX;
+                finalY = touchY;
+                break;
+                
+            case 1: // 90° clockwise
+                // Panel rotated 90°: X becomes Y, Y becomes (width - X)
+                // Native: X=0..1023, Y=0..599
+                // Rotated: X=0..599, Y=0..1023
+                finalX = touchY;
+                finalY = (LCD_H_RES - 1) - touchX;
+                break;
+                
+            case 2: // 180°
+                // Panel rotated 180°: both axes inverted
+                finalX = (LCD_H_RES - 1) - touchX;
+                finalY = (LCD_V_RES - 1) - touchY;
+                break;
+                
+            case 3: // 270° clockwise (or 90° counter-clockwise)
+                // Panel rotated 270°: X becomes (height - Y), Y becomes X
+                finalX = (LCD_V_RES - 1) - touchY;
+                finalY = touchX;
+                break;
+        }
+        
+        // Clamp to display bounds
+        if (finalX >= hor_res) finalX = hor_res - 1;
+        if (finalY >= ver_res) finalY = ver_res - 1;
+        
+        data->point.x = finalX;
+        data->point.y = finalY;
+#endif
     }
 }
 
@@ -145,6 +273,23 @@ void setup()
     lv_indev_set_read_cb(touch_indev, my_touchpad_read);
     lv_indev_set_display(touch_indev, disp_drv);
 
+    // Initialize settings services
+    Serial0.println("Initializing settings services...");
+    Serial.println("Initializing settings services...");
+    if (!settings::initSettingsServices()) {
+        Serial0.println("Failed to init settings services");
+        Serial.println("Failed to init settings services");
+    } else {
+        Serial0.println("Settings services initialized OK");
+        Serial.println("Settings services initialized OK");
+        
+        // Apply saved display rotation
+        uint8_t saved_rotation = settings::SettingsStore::instance().getRotation();
+        Serial0.printf("Applying saved rotation: %d (%d\xc2\xb0)\n", saved_rotation, saved_rotation * 90);
+        Serial.printf("Applying saved rotation: %d (%d\xc2\xb0)\n", saved_rotation, saved_rotation * 90);
+        applyDisplayRotation(saved_rotation);
+    }
+
     // Initialize UI manager
     if (!ui::UIManager::instance().init()) {
         Serial0.println("UI Manager init failed");
@@ -164,6 +309,16 @@ void loop()
     
     if (elapsed > 0) {
         lv_tick_inc(elapsed);
+    }
+    
+    // Check for rotation changes from settings
+    static uint8_t last_checked_rotation = 0xFF;
+    uint8_t current_settings_rotation = settings::SettingsStore::instance().getRotation();
+    if (current_settings_rotation != last_checked_rotation) {
+        last_checked_rotation = current_settings_rotation;
+        if (current_settings_rotation != current_rotation) {
+            applyDisplayRotation(current_settings_rotation);
+        }
     }
     
     // Update UI manager

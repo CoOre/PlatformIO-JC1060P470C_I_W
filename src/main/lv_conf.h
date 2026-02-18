@@ -499,7 +499,7 @@
 #define LV_FONT_MONTSERRAT_18 0
 #define LV_FONT_MONTSERRAT_20 0
 #define LV_FONT_MONTSERRAT_22 0
-#define LV_FONT_MONTSERRAT_24 0
+#define LV_FONT_MONTSERRAT_24 1
 #define LV_FONT_MONTSERRAT_26 0
 #define LV_FONT_MONTSERRAT_28 0
 #define LV_FONT_MONTSERRAT_30 0
@@ -511,7 +511,7 @@
 #define LV_FONT_MONTSERRAT_42 0
 #define LV_FONT_MONTSERRAT_44 0
 #define LV_FONT_MONTSERRAT_46 0
-#define LV_FONT_MONTSERRAT_48 0
+#define LV_FONT_MONTSERRAT_48 1
 
 /*Demonstrate special features*/
 #define LV_FONT_MONTSERRAT_28_COMPRESSED 0  /*bpp = 3*/
@@ -526,10 +526,14 @@
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE
+#define LV_FONT_CUSTOM_DECLARE  \
+    LV_FONT_DECLARE(lv_font_roboto_14) \
+    LV_FONT_DECLARE(lv_font_roboto_16) \
+    LV_FONT_DECLARE(lv_font_roboto_18) \
+    LV_FONT_DECLARE(lv_font_roboto_24)
 
 /*Always set a default font*/
-#define LV_FONT_DEFAULT &lv_font_montserrat_14
+#define LV_FONT_DEFAULT &lv_font_roboto_14
 
 /*Enable handling large font and/or fonts with a lot of characters.
  *The limit depends on the font size, font face and bpp.
@@ -538,6 +542,13 @@
 
 /*Enables/disables support for compressed fonts.*/
 #define LV_USE_FONT_COMPRESSED 0
+
+/*Enable subpixel rendering*/
+#define LV_USE_FONT_SUBPX 1
+#if LV_USE_FONT_SUBPX
+    /*Set the pixel order of the display. Physical order of RGB channels. */
+    #define LV_FONT_SUBPX_BGR 0  /*0: RGB; 1:BGR order*/
+#endif
 
 /*Enable drawing placeholders when glyph dsc is not found*/
 #define LV_USE_FONT_PLACEHOLDER 1
@@ -620,7 +631,7 @@
 
 #define LV_USE_CANVAS     1
 
-#define LV_USE_CHART      1
+#define LV_USE_CHART      0
 
 #define LV_USE_CHECKBOX   1
 
@@ -1084,14 +1095,14 @@
 *==================*/
 
 /*Enable the examples to be built with the library*/
-#define LV_BUILD_EXAMPLES 1
+#define LV_BUILD_EXAMPLES 0
 
 /*===================
  * DEMO USAGE
  ====================*/
 
 /*Show some widget. It might be required to increase `LV_MEM_SIZE` */
-#define LV_USE_DEMO_WIDGETS 1
+#define LV_USE_DEMO_WIDGETS 0
 
 /*Demonstrate the usage of encoder and keyboard*/
 #define LV_USE_DEMO_KEYPAD_AND_ENCODER 0

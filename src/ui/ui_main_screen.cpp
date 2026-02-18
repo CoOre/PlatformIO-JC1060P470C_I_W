@@ -1,6 +1,7 @@
 #include "ui_main_screen.h"
 #include "ui_manager.h"
 #include "ui_status_bar.h"
+#include "esp_log.h"
 
 namespace ui {
 
@@ -9,6 +10,12 @@ MainScreen::MainScreen() = default;
 MainScreen::~MainScreen() {
     if (current_app_) {
         delete current_app_;
+    }
+    if (clock_app_) {
+        delete clock_app_;
+    }
+    if (settings_app_) {
+        delete settings_app_;
     }
     if (launcher_) {
         delete launcher_;
@@ -53,7 +60,8 @@ void MainScreen::createLauncher() {
 
     // Add Box Test App
     AppInfo box_test_app;
-    box_test_app.name = "Box Test";
+    box_test_app.name = nullptr;
+    box_test_app.name_id = settings::StringID::APP_BOX_TEST;
     box_test_app.icon = nullptr; // Using color placeholder
     box_test_app.color = 0x2196F3; // Blue
     box_test_app.onLaunch = [this]() {
@@ -61,13 +69,41 @@ void MainScreen::createLauncher() {
     };
     launcher_->addApp(box_test_app);
 
-    // Add placeholder apps for demo
-    const char* app_names[] = {"Settings", "Gallery", "Music", "Files", "Calculator"};
-    uint32_t app_colors[] = {0x4CAF50, 0xFF9800, 0x9C27B0, 0x607D8B, 0xF44336};
+    // Add Clock app
+    AppInfo clock_app;
+    clock_app.name = nullptr;
+    clock_app.name_id = settings::StringID::APP_CLOCK;
+    clock_app.icon = nullptr;
+    clock_app.color = 0xFF9800; // Orange
+    clock_app.onLaunch = [this]() {
+        launchClockApp();
+    };
+    launcher_->addApp(clock_app);
 
-    for (int i = 0; i < 5; i++) {
+    // Add Settings app
+    AppInfo settings_app;
+    settings_app.name = nullptr;
+    settings_app.name_id = settings::StringID::APP_SETTINGS;
+    settings_app.icon = nullptr;
+    settings_app.color = 0x4CAF50; // Green
+    settings_app.onLaunch = [this]() {
+        launchSettingsApp();
+    };
+    launcher_->addApp(settings_app);
+
+    // Add placeholder apps for demo
+    const settings::StringID app_names[] = {
+        settings::StringID::APP_GALLERY,
+        settings::StringID::APP_MUSIC,
+        settings::StringID::APP_FILES,
+        settings::StringID::APP_CALCULATOR
+    };
+    uint32_t app_colors[] = {0xFF9800, 0x9C27B0, 0x607D8B, 0xF44336};
+
+    for (int i = 0; i < 4; i++) {
         AppInfo app;
-        app.name = app_names[i];
+        app.name = nullptr;
+        app.name_id = app_names[i];
         app.icon = nullptr;
         app.color = app_colors[i];
         app.onLaunch = []() {
@@ -98,9 +134,125 @@ void MainScreen::launchBoxTestApp() {
         current_app_ = nullptr;
     }
 
+    // Destroy clock app if exists
+    if (clock_app_) {
+        clock_app_->destroy();
+        delete clock_app_;
+        clock_app_ = nullptr;
+    }
+
+    // Destroy settings app if exists
+    if (settings_app_) {
+        settings_app_->destroy();
+        delete settings_app_;
+        settings_app_ = nullptr;
+    }
+
     // Create and show box test app
     current_app_ = new BoxTestApp();
     current_app_->create(container_);
+
+    // Force layout update
+    lv_obj_update_layout(container_);
+
+    // Notify that we left launcher
+    if (on_app_launch_) {
+        on_app_launch_();
+    }
+}
+
+void MainScreen::launchClockApp() {
+    ESP_LOGI("MainScreen", "launchClockApp called");
+
+    // Hide launcher first
+    launcher_->hide();
+
+    // Delete any existing box test app
+    if (current_app_) {
+        current_app_->destroy();
+        delete current_app_;
+        current_app_ = nullptr;
+    }
+
+    // Destroy clock app if exists
+    if (clock_app_) {
+        clock_app_->destroy();
+        delete clock_app_;
+        clock_app_ = nullptr;
+    }
+
+    // Destroy settings app if exists
+    if (settings_app_) {
+        settings_app_->destroy();
+        delete settings_app_;
+        settings_app_ = nullptr;
+    }
+
+    // Create and show clock app
+    clock_app_ = new ClockApp();
+    bool created = clock_app_->create(container_);
+
+    if (!created) {
+        ESP_LOGE("MainScreen", "Failed to create clock app");
+        delete clock_app_;
+        clock_app_ = nullptr;
+        // Show launcher again on failure
+        launcher_->show();
+        return;
+    }
+
+    ESP_LOGI("MainScreen", "Clock app created successfully");
+
+    // Force layout update
+    lv_obj_update_layout(container_);
+
+    // Notify that we left launcher
+    if (on_app_launch_) {
+        on_app_launch_();
+    }
+}
+
+void MainScreen::launchSettingsApp() {
+    ESP_LOGI("MainScreen", "launchSettingsApp called");
+
+    // Hide launcher first
+    launcher_->hide();
+
+    // Delete any existing box test app
+    if (current_app_) {
+        current_app_->destroy();
+        delete current_app_;
+        current_app_ = nullptr;
+    }
+
+    // Destroy clock app if exists
+    if (clock_app_) {
+        clock_app_->destroy();
+        delete clock_app_;
+        clock_app_ = nullptr;
+    }
+
+    // Destroy settings app if exists
+    if (settings_app_) {
+        settings_app_->destroy();
+        delete settings_app_;
+        settings_app_ = nullptr;
+    }
+
+    // Create and show settings app
+    settings_app_ = new settings::SettingsApp();
+    bool created = settings_app_->create(container_);
+
+    if (!created) {
+        ESP_LOGE("MainScreen", "Failed to create settings app");
+        delete settings_app_;
+        settings_app_ = nullptr;
+        // Show launcher again on failure
+        launcher_->show();
+        return;
+    }
+
+    ESP_LOGI("MainScreen", "Settings app created successfully");
 
     // Force layout update
     lv_obj_update_layout(container_);
@@ -119,6 +271,20 @@ void MainScreen::showLauncher() {
         current_app_ = nullptr;
     }
 
+    // Destroy clock app if exists
+    if (clock_app_) {
+        clock_app_->destroy();
+        delete clock_app_;
+        clock_app_ = nullptr;
+    }
+
+    // Destroy settings app if exists
+    if (settings_app_) {
+        settings_app_->destroy();
+        delete settings_app_;
+        settings_app_ = nullptr;
+    }
+
     // Show launcher
     launcher_->show();
 }
@@ -127,9 +293,26 @@ bool MainScreen::isInLauncher() const {
     return launcher_ && launcher_->isVisible();
 }
 
+bool MainScreen::handleBackInSettings() {
+    if (settings_app_ && settings_app_->isActive()) {
+        if (settings_app_->handleBack()) {
+            return true;
+        }
+        showLauncher();
+        return true;
+    }
+    return false;
+}
+
 void MainScreen::update(uint32_t now_ms) {
     if (current_app_ && current_app_->isActive()) {
         current_app_->update(now_ms);
+    }
+    if (clock_app_ && clock_app_->isActive()) {
+        clock_app_->update(now_ms);
+    }
+    if (settings_app_ && settings_app_->isActive()) {
+        settings_app_->update(now_ms);
     }
 }
 

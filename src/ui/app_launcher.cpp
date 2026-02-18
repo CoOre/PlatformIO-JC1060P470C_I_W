@@ -1,5 +1,6 @@
 #include "app_launcher.h"
 #include "ui_manager.h"
+#include "esp_log.h"
 
 namespace ui {
 
@@ -58,10 +59,13 @@ void AppLauncher::createGrid() {
 }
 
 void AppLauncher::addApp(const AppInfo& app) {
-    apps_.push_back(app);
-    
-    uint8_t col = (apps_.size() - 1) % kColumns;
-    uint8_t row = (apps_.size() - 1) / kColumns;
+    AppEntry entry;
+    entry.info = app;
+    apps_.push_back(entry);
+
+    size_t index = apps_.size() - 1;
+    uint8_t col = index % kColumns;
+    uint8_t row = index / kColumns;
 
     // Container for icon + label (fills the grid cell)
     lv_obj_t* container = lv_obj_create(grid_);
@@ -92,14 +96,18 @@ void AppLauncher::addApp(const AppInfo& app) {
 
     // App name label - below the icon
     lv_obj_t* label = lv_label_create(container);
-    lv_label_set_text(label, app.name);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_label_set_text(label, getAppDisplayName(apps_[index].info));
+    lv_obj_set_style_text_font(label, &lv_font_roboto_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(label, lv_color_hex(0x333333), LV_PART_MAIN);
 
     // Store app index in user data (on the icon button)
-    size_t index = apps_.size() - 1;
     lv_obj_set_user_data(btn, reinterpret_cast<void*>(index));
     lv_obj_add_event_cb(btn, appClickHandler, LV_EVENT_CLICKED, this);
+
+    apps_[index].label = label;
+    
+    // Make the button clickable and not scrollable
+    lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
 }
 
 void AppLauncher::clearApps() {
@@ -115,6 +123,7 @@ void AppLauncher::setOnAppLaunch(std::function<void(const AppInfo&)> callback) {
 
 void AppLauncher::show() {
     if (container_) {
+        refreshLabels();
         lv_obj_clear_flag(container_, LV_OBJ_FLAG_HIDDEN);
         visible_ = true;
     }
@@ -139,9 +148,30 @@ void AppLauncher::appClickHandler(lv_event_t* e) {
 void AppLauncher::onAppClicked(lv_event_t* e) {
     lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
     size_t index = reinterpret_cast<size_t>(lv_obj_get_user_data(btn));
-    
+
+    ESP_LOGI("AppLauncher", "App clicked, index=%d, total apps=%d", (int)index, (int)apps_.size());
+
     if (index < apps_.size() && on_app_launch_) {
-        on_app_launch_(apps_[index]);
+        ESP_LOGI("AppLauncher", "Launching app: %s", getAppDisplayName(apps_[index].info));
+        on_app_launch_(apps_[index].info);
+    } else {
+        ESP_LOGW("AppLauncher", "Cannot launch: index=%d, size=%d, callback=%p",
+                 (int)index, (int)apps_.size(), on_app_launch_ ? (void*)1 : nullptr);
+    }
+}
+
+const char* AppLauncher::getAppDisplayName(const AppInfo& app) const {
+    if (app.name_id != settings::StringID::COUNT) {
+        return settings::t(app.name_id);
+    }
+    return app.name ? app.name : "";
+}
+
+void AppLauncher::refreshLabels() {
+    for (auto& entry : apps_) {
+        if (entry.label) {
+            lv_label_set_text(entry.label, getAppDisplayName(entry.info));
+        }
     }
 }
 

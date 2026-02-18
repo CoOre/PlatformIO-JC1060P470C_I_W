@@ -3,6 +3,8 @@
 #include "lvgl.h"
 #include "app_launcher.h"
 #include "box_test_app.h"
+#include "clock_app.h"
+#include "settings/settings_app.h"
 #include <cstdint>
 #include <functional>
 
@@ -43,6 +45,12 @@ public:
     bool isInLauncher() const;
 
     /**
+     * @brief Handle back action inside settings app
+     * @return true if handled by settings or launcher transition
+     */
+    bool handleBackInSettings();
+
+    /**
      * @brief Set callback when app is launched
      */
     void setOnAppLaunch(std::function<void()> callback);
@@ -56,10 +64,14 @@ private:
     void setupContainer(lv_obj_t* parent);
     void createLauncher();
     void launchBoxTestApp();
+    void launchClockApp();
+    void launchSettingsApp();
 
     lv_obj_t* container_ = nullptr;
     AppLauncher* launcher_ = nullptr;
     BoxTestApp* current_app_ = nullptr;
+    ClockApp* clock_app_ = nullptr;
+    settings::SettingsApp* settings_app_ = nullptr;
 
     std::function<void()> on_app_launch_;
 };
